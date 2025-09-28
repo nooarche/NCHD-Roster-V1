@@ -1,5 +1,5 @@
-
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware 
 from .routers import api
 from .db import engine, Base, SessionLocal
 from .seed import seed
