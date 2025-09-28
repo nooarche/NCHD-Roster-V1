@@ -16,10 +16,10 @@ services:
 
   backend:
     build:
-      context: ./env/backend
+      context: ../backend          # ← from infra/ to project backend/
       dockerfile: Dockerfile
     env_file:
-      - ./env/backend.env
+      - ./env/backend.env          # ← from infra/ to infra/env/backend.env
     depends_on:
       db:
         condition: service_healthy
@@ -27,9 +27,9 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ../frontend         # ← from infra/ to project frontend/
       dockerfile: Dockerfile
-    # IMPORTANT: make the frontend call /api (nginx will route it)
+    # If using nginx proxy, set the API base to /api (see nginx service below)
     environment:
       - VITE_API_BASE=/api
     depends_on:
@@ -42,9 +42,9 @@ services:
       - frontend
       - backend
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro  # ← from infra/nginx/nginx.conf
     ports:
-      - "80:80"     # → visit http://localhost
+      - "80:80"
 
 volumes:
   pgdata:
