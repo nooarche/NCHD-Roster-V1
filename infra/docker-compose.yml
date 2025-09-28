@@ -42,7 +42,7 @@ services:
       - frontend
       - backend
     volumes:
-      - ./nginx/nginx.conf: # ← from infra/nginx/nginx.conf
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro   # host:container:ro 
     ports:
       - "80:80"
 
