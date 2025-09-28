@@ -74,6 +74,7 @@ function AdminPanel({users, refresh}:{users:User[], refresh:()=>void}) {
     <div>
       <h2 style={{margin:"8px 0"}}>Admin view</h2>
       <OnCallRules/>
+      <RosterBuilder/> 
       <ValidationCard/>
       <AdminUsers users={users} refresh={refresh}/>
     </div>
@@ -246,6 +247,7 @@ function StaffCalendar() {
         <button onClick={()=>{ const nm = new Date(year, month-2, 1); setYear(nm.getFullYear()); setMonth(nm.getMonth()+1) }}>◀</button>
         <strong>{first.toLocaleString(undefined,{month:"long"})} {year}</strong>
         <button onClick={()=>{ const nm = new Date(year, month, 1); setYear(nm.getFullYear()); setMonth(nm.getMonth()+1) }}>▶</button>
+        <button onClick={load}>Reload</button>
       </div>
       <div style={{display:"grid", gridTemplateColumns:"repeat(7, 1fr)", gap:6}}>
         {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(w=>(
@@ -260,6 +262,48 @@ function StaffCalendar() {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function RosterBuilder() {
+  const now = new Date()
+  const [year, setYear] = useState(now.getFullYear())
+  const [month, setMonth] = useState(now.getMonth()+1)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  async function build() {
+    setBusy(true); setMsg(null)
+    try {
+      const r = await fetch(`${API}/actions/roster-build`, {
+        method:"POST",
+        headers:{ "content-type":"application/json" },
+        body: JSON.stringify({
+          year, month,
+          day_calls_per_day: 0,
+          night_calls_per_day: 1,
+          pool_roles: ["nchd"]   // round-robin across NCHDs
+        })
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`)
+      setMsg(`Created ${data.created_slots} on-call slots for ${year}-${String(month).padStart(2,"0")}.`)
+    } catch(e:any) {
+      setMsg(e.message || "Build failed")
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div style={{margin:"12px 0", padding:"12px", border:"1px solid #eee", borderRadius:8}}>
+      <h3 style={{marginTop:0}}>Roster builder</h3>
+      <div style={{display:"flex", gap:8, alignItems:"center", flexWrap:"wrap"}}>
+        <input type="number" value={year} onChange={e=>setYear(parseInt(e.target.value||`${now.getFullYear()}`,10))} style={{width:100}}/>
+        <input type="number" value={month} min={1} max={12} onChange={e=>setMonth(parseInt(e.target.value||"1",10))} style={{width:80}}/>
+        <button onClick={build} disabled={busy}>{busy ? "Building…" : "Build roster"}</button>
+        {msg && <span>{msg}</span>}
+      </div>
+      <small>Round-robin across NCHDs. Re-running will overwrite existing on-call slots for that month.</small>
     </div>
   )
 }
