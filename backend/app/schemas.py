@@ -26,3 +26,8 @@ class RotaSlotOut(BaseModel):
     labels: Optional[Any]
     class Config:
         from_attributes = True
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    role: Optional[str] = None
