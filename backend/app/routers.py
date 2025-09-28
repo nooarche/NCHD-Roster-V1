@@ -24,10 +24,6 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     return u
 
 # Example action endpoints (roster build, refresh) — stubs
-@api.post("/actions/roster-build")
-def roster_build(db: Session = Depends(get_db)):
-    # TODO: load constraints, generate slots, apply OPD guards, run EWTD/fairness validators
-    return {"status": "queued", "summary": "Roster build stubbed. Seed data provides initial roster."}
 
 @api.post("/actions/roster-refresh")
 def roster_refresh(db: Session = Depends(get_db)):
