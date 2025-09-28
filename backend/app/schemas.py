@@ -50,3 +50,19 @@ class ValidationIssue(BaseModel):
 class ValidationReport(BaseModel):
     ok: bool
     issues: List[ValidationIssue]
+
+from typing import List, Optional
+
+class RosterBuildRequest(BaseModel):
+    year: int
+    month: int                     # 1..12
+    day_calls_per_day: int = 0     # keep 0 for now; we focus on nights
+    night_calls_per_day: int = 1
+    pool_roles: List[str] = ["nchd"]  # which roles are eligible (default NCHDs)
+
+class RosterBuildResult(BaseModel):
+    created_slots: int
+
+class RosterUpdateRequest(BaseModel):
+    slot_id: Optional[int] = None
+    user_id: Optional[int] = None
