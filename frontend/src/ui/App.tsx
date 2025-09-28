@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState } from "react"
 
 type Role = "admin" | "supervisor" | "nchd" | "staff"
 type User = { id:number; name:string; email:string; role:Role }
+type OnCallEvent = { start:string; end:string; type:string; user_id:number; user_name:string }
+type ValidationIssue = { user_id:number; user_name:string; slot_id:number; message:string }
+type ValidationReport = { ok:boolean; issues:ValidationIssue[] }
 
-// When running behind nginx we set VITE_API_BASE=/api in compose.
-// Fallbacks so it still works direct on :8000 during dev.
 const API = (import.meta as any).env?.VITE_API_BASE || "/api"
 
 const th: React.CSSProperties = { textAlign:"left", borderBottom:"1px solid #ddd", padding:"8px 10px", fontWeight:600 }
@@ -67,7 +68,67 @@ function UsersTable({users}:{users:User[]}) {
   )
 }
 
-/** Admin panel: minimal create/edit/delete */
+/** ===== Admin: On-call rules + validation + Users CRUD ===== */
+function AdminPanel({users, refresh}:{users:User[], refresh:()=>void}) {
+  return (
+    <div>
+      <h2 style={{margin:"8px 0"}}>Admin view</h2>
+      <OnCallRules/>
+      <ValidationCard/>
+      <AdminUsers users={users} refresh={refresh}/>
+    </div>
+  )
+}
+
+function OnCallRules() {
+  return (
+    <div style={{margin:"12px 0", padding:"12px", border:"1px solid #eee", borderRadius:8}}>
+      <h3 style={{marginTop:0}}>On-call rota rules (summary)</h3>
+      <ul>
+        <li>Exactly one on-call (day or night) covering each required period.</li>
+        <li>Duty length ≤ 24 hours (EWTD hard cap).</li>
+        <li>Daily rest ≥ 11 hours; weekly rest ≥ 24 hours (rolling windows).</li>
+        <li>Protected teaching (e.g., Wed 14:00–16:30) not to be overridden by call.</li>
+        <li>Handover blocks observed at boundaries (e.g., 16:30–17:00, 09:00–09:30).</li>
+        <li>Fair distribution of on-call across NCHDs over the rotation.</li>
+      </ul>
+      <small>Full contract/EWTD mapping to be expanded in compliance module.</small>
+    </div>
+  )
+}
+
+function ValidationCard() {
+  const [report, setReport] = useState<ValidationReport | null>(null)
+  const [busy, setBusy] = useState(false)
+  const run = async () => {
+    setBusy(true)
+    try {
+      const r = await fetch(`${API}/validate/rota`)
+      const data = await r.json()
+      setReport(data)
+    } finally { setBusy(false) }
+  }
+  return (
+    <div style={{margin:"12px 0", padding:"12px", border:"1px solid #eee", borderRadius:8}}>
+      <div style={{display:"flex", alignItems:"center", gap:12}}>
+        <h3 style={{margin:0}}>Rota validation</h3>
+        <button onClick={run} disabled={busy}>{busy ? "Running…" : "Run validation"}</button>
+        {report && <span style={{fontWeight:600, color: report.ok ? "green" : "crimson"}}>
+          {report.ok ? "OK — no issues found" : `${report.issues.length} issue(s)`}
+        </span>}
+      </div>
+      {report && !report.ok && (
+        <ol style={{marginTop:12}}>
+          {report.issues.map((i, idx) => (
+            <li key={idx}><code>slot#{i.slot_id}</code> — {i.user_name}: {i.message}</li>
+          ))}
+        </ol>
+      )}
+    </div>
+  )
+}
+
+/** Admin: Users CRUD */
 function AdminUsers({users, refresh}:{users:User[], refresh:()=>void}) {
   const [form, setForm] = useState<{name:string; email:string; role:Role}>({name:"", email:"", role:"nchd"})
   const [editing, setEditing] = useState<number|null>(null)
@@ -103,8 +164,8 @@ function AdminUsers({users, refresh}:{users:User[], refresh:()=>void}) {
 
   return (
     <div style={{marginTop:12}}>
+      <h3>Users (Admin)</h3>
       {err && <div style={{color:"crimson", marginBottom:8}}>Error: {err}</div>}
-      {/* Create */}
       <div style={{display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", marginBottom:12}}>
         <input placeholder="Name" value={form.name} onChange={e=>setForm({...form, name:e.target.value})}/>
         <input placeholder="Email" value={form.email} onChange={e=>setForm({...form, email:e.target.value})}/>
@@ -114,8 +175,6 @@ function AdminUsers({users, refresh}:{users:User[], refresh:()=>void}) {
         </select>
         <button onClick={create} disabled={busy || !form.name || !form.email}>Add user</button>
       </div>
-
-      {/* List with inline edit/delete */}
       <div style={{overflowX:"auto"}}>
         <table style={{borderCollapse:"collapse", minWidth:700}}>
           <thead>
@@ -152,14 +211,65 @@ function AdminUsers({users, refresh}:{users:User[], refresh:()=>void}) {
   )
 }
 
+/** ===== Staff: Monthly on-call calendar ===== */
+function StaffCalendar() {
+  const today = new Date()
+  const [year, setYear] = useState<number>(today.getFullYear())
+  const [month, setMonth] = useState<number>(today.getMonth()+1) // 1..12
+  const [events, setEvents] = useState<OnCallEvent[]>([])
+
+  async function load() {
+    const r = await fetch(`${API}/oncall/month?year=${year}&month=${month}`)
+    setEvents(await r.json())
+  }
+  useEffect(()=>{ load() }, [year, month])
+
+  const first = new Date(year, month-1, 1)
+  const startDay = first.getDay()  // 0 Sun .. 6 Sat
+  const daysInMonth = new Date(year, month, 0).getDate()
+  const cells: {day?:number; notes?:string[]}[] = []
+  for (let i=0;i<startDay;i++) cells.push({})
+  for (let d=1; d<=daysInMonth; d++) cells.push({day:d})
+
+  // Map events per day label
+  const perDay = new Map<number, string[]>()
+  for (const ev of events) {
+    const s = new Date(ev.start)
+    const d = s.getDate()
+    const label = `${ev.type==="night_call"?"Night":"Day"}: ${ev.user_name}`
+    perDay.set(d, [...(perDay.get(d)||[]), label])
+  }
+
+  return (
+    <div style={{marginTop:8}}>
+      <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:8}}>
+        <button onClick={()=>{ const nm = new Date(year, month-2, 1); setYear(nm.getFullYear()); setMonth(nm.getMonth()+1) }}>◀</button>
+        <strong>{first.toLocaleString(undefined,{month:"long"})} {year}</strong>
+        <button onClick={()=>{ const nm = new Date(year, month, 1); setYear(nm.getFullYear()); setMonth(nm.getMonth()+1) }}>▶</button>
+      </div>
+      <div style={{display:"grid", gridTemplateColumns:"repeat(7, 1fr)", gap:6}}>
+        {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(w=>(
+          <div key={w} style={{textAlign:"center", fontWeight:600}}>{w}</div>
+        ))}
+        {cells.map((c, idx)=>(
+          <div key={idx} style={{minHeight:90, border:"1px solid #eee", borderRadius:6, padding:6}}>
+            {c.day && <div style={{fontWeight:600, marginBottom:6}}>{c.day}</div>}
+            {c.day && (perDay.get(c.day)||[]).map((t,i)=>(
+              <div key={i} style={{fontSize:12, marginBottom:4}}>{t}</div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function App() {
   const { users, loading, error, refresh } = useUsers()
   const [tab, setTab] = useState<"Admin"|"Supervisor"|"NCHD"|"Staff">("Admin")
 
-  const admins = useMemo(()=>users.filter(u=>u.role==="admin"), [users])
   const supervisors = useMemo(()=>users.filter(u=>u.role==="supervisor"), [users])
   const nchds = useMemo(()=>users.filter(u=>u.role==="nchd"), [users])
-  const staff = useMemo(()=>users.filter(u=>u.role==="staff"), [users])
 
   return (
     <div style={{fontFamily:"system-ui,-apple-system,Segoe UI,Roboto", margin:"2rem", lineHeight:1.35}}>
@@ -177,37 +287,21 @@ export function App() {
 
       {!loading && !error && (
         <>
-          {tab==="Admin" && (
-            <>
-              <h2 style={{margin:"8px 0"}}>Admin view</h2>
-              <p><strong>Admins:</strong> {admins.length}</p>
-              <AdminUsers users={users} refresh={refresh}/>
-            </>
-          )}
-          {tab==="Supervisor" && (
-            <>
-              <h2 style={{margin:"8px 0"}}>Supervisor view</h2>
-              <p><strong>Supervisors:</strong> {supervisors.length}</p>
-              <UsersTable users={supervisors}/>
-              <div style={{marginTop:12}}>Team calendar & approvals (coming soon).</div>
-            </>
-          )}
-          {tab==="NCHD" && (
-            <>
-              <h2 style={{margin:"8px 0"}}>NCHD view</h2>
-              <p><strong>NCHDs:</strong> {nchds.length}</p>
-              <UsersTable users={nchds}/>
-              <div style={{marginTop:12}}>Personal calendar & Leave Helper (coming soon).</div>
-            </>
-          )}
-          {tab==="Staff" && (
-            <>
-              <h2 style={{margin:"8px 0"}}>Staff view</h2>
-              <p><strong>Staff:</strong> {staff.length}</p>
-              <UsersTable users={staff}/>
-              <div style={{marginTop:12}}>Operational week view (coming soon).</div>
-            </>
-          )}
+          {tab==="Admin"      && <AdminPanel users={users} refresh={refresh}/>}
+          {tab==="Supervisor" && (<>
+            <h2>Supervisor view</h2>
+            <UsersTable users={supervisors}/>
+            <div style={{marginTop:12}}>Team calendar & approvals (coming soon).</div>
+          </>)}
+          {tab==="NCHD"       && (<>
+            <h2>NCHD view</h2>
+            <UsersTable users={nchds}/>
+            <div style={{marginTop:12}}>Personal calendar & Leave Helper (coming soon).</div>
+          </>)}
+          {tab==="Staff"      && (<>
+            <h2>Staff view — Monthly on-call</h2>
+            <StaffCalendar/>
+          </>)}
         </>
       )}
     </div>
