@@ -31,3 +31,22 @@ class UserUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
     role: Optional[str] = None
+
+from typing import List
+
+class OnCallEvent(BaseModel):
+    start: datetime
+    end: datetime
+    type: str
+    user_id: int
+    user_name: str
+
+class ValidationIssue(BaseModel):
+    user_id: int
+    user_name: str
+    slot_id: int
+    message: str
+
+class ValidationReport(BaseModel):
+    ok: bool
+    issues: List[ValidationIssue]
