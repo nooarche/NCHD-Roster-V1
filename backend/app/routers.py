@@ -120,14 +120,22 @@ def validate_rota(db: Session = Depends(get_db)):
 @api.post("/actions/roster-build", response_model=schemas.RosterBuildResult)
 def roster_build(req: schemas.RosterBuildRequest, db: Session = Depends(get_db)):
     """
-    Simple month builder:
-      - Clears existing day_call/night_call slots overlapping [month_start, next_month)
-      - Assigns 1 night_call per day in round-robin across eligible users (pool_roles)
+    Build a month of on-call:
+      - Ensures at least one Post exists (creates 'General Service' if none)
+      - Clears existing on-call in [month_start, next_month)
+      - Assigns 1 night_call per day round-robin across eligible users
     """
     first = datetime(req.year, req.month, 1)
     next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
 
-    # pool of eligible users
+    # Ensure a Post exists (to satisfy NOT NULL post_id schemas)
+    post = db.query(models.Post).first()
+    if not post:
+        post = models.Post(title="General Service", opd_day="Wed")
+        db.add(post)
+        db.commit(); db.refresh(post)
+
+    # Eligible users
     pool = (
         db.query(models.User)
           .filter(models.User.role.in_(req.pool_roles))
@@ -138,7 +146,7 @@ def roster_build(req: schemas.RosterBuildRequest, db: Session = Depends(get_db))
         raise HTTPException(status_code=400, detail="No eligible users found for pool_roles")
     pool_ids = [u.id for u in pool]
 
-    # wipe existing on-call in that window
+    # Wipe existing on-call in window
     db.query(models.RotaSlot).filter(
         and_(models.RotaSlot.start < next_month,
              models.RotaSlot.end > first,
@@ -146,19 +154,20 @@ def roster_build(req: schemas.RosterBuildRequest, db: Session = Depends(get_db))
     ).delete(synchronize_session=False)
     db.commit()
 
-    # assign night calls
+    # Assign night calls
     created = 0
     idx = 0
     day = first
     while day < next_month:
-        # night call 17:00 → next day 09:00
         start = day.replace(hour=17, minute=0, second=0, microsecond=0)
-        end = (day + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+        end   = (day + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
         uid = pool_ids[idx % len(pool_ids)]
         slot = models.RotaSlot(
-            user_id=uid, post_id=None,
+            user_id=uid,
+            post_id=post.id,             # ← ensure NOT NULL
             start=start, end=end,
-            type="night_call", labels={}
+            type="night_call",
+            labels={}
         )
         db.add(slot)
         created += 1
@@ -167,7 +176,6 @@ def roster_build(req: schemas.RosterBuildRequest, db: Session = Depends(get_db))
 
     db.commit()
     return schemas.RosterBuildResult(created_slots=created)
-
 
 @api.post("/oncall/update", response_model=schemas.OnCallEvent)
 def oncall_update(req: schemas.RosterUpdateRequest, db: Session = Depends(get_db)):
