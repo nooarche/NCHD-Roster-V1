@@ -51,3 +51,68 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     db.delete(u); db.commit()
     return {"status": "deleted", "id": user_id}
+
+@api.get("/oncall/month", response_model=List[schemas.OnCallEvent])
+def oncall_month(year: int, month: int, db: Session = Depends(get_db)):
+    # window [first_day, first_day_next)
+    first = datetime(year, month, 1)
+    next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+    q = (
+        db.query(models.RotaSlot, models.User.name)
+          .join(models.User, models.User.id == models.RotaSlot.user_id)
+          .filter(
+              and_(models.RotaSlot.start < next_month,
+                   models.RotaSlot.end > first,
+                   models.RotaSlot.type.in_(["night_call", "day_call"]))
+          )
+          .order_by(models.RotaSlot.start.asc())
+    )
+    out = []
+    for slot, uname in q.all():
+        out.append(schemas.OnCallEvent(
+            start=slot.start, end=slot.end, type=slot.type,
+            user_id=slot.user_id or 0, user_name=uname or "Unassigned"
+        ))
+    return out
+
+@api.get("/validate/rota", response_model=schemas.ValidationReport)
+def validate_rota(db: Session = Depends(get_db)):
+    """
+    Minimal checks (extend as needed):
+      - Duty length <= 24h (EWTD)
+      - Each calendar day has at most one night_call (simple duplication guard)
+    """
+    issues: list[schemas.ValidationIssue] = []
+
+    # 24h duty check
+    slots = (
+        db.query(models.RotaSlot, models.User.name)
+          .join(models.User, models.User.id == models.RotaSlot.user_id, isouter=True)
+          .all()
+    )
+    for slot, uname in slots:
+        hours = (slot.end - slot.start).total_seconds() / 3600.0
+        if hours > 24.0:
+            issues.append(schemas.ValidationIssue(
+                user_id=slot.user_id or 0,
+                user_name=uname or "Unassigned",
+                slot_id=slot.id,
+                message=f"Duty exceeds 24h ({hours:.1f}h)"
+            ))
+
+    # one night_call per day (simple)
+    from collections import defaultdict
+    per_day = defaultdict(list)
+    for slot, _ in slots:
+        if slot.type == "night_call":
+            key = slot.start.date()
+            per_day[key].append(slot.id)
+    for day, ids in per_day.items():
+        if len(ids) > 1:
+            for sid in ids[1:]:
+                issues.append(schemas.ValidationIssue(
+                    user_id=0, user_name="—", slot_id=sid,
+                    message=f"Multiple night_call assignments on {day}"
+                ))
+
+    return schemas.ValidationReport(ok=(len(issues) == 0), issues=issues)
