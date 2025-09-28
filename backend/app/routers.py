@@ -54,17 +54,16 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
 
 @api.get("/oncall/month", response_model=List[schemas.OnCallEvent])
 def oncall_month(year: int, month: int, db: Session = Depends(get_db)):
-    # window [first_day, first_day_next)
+    from sqlalchemy import func
     first = datetime(year, month, 1)
     next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+
     q = (
         db.query(models.RotaSlot, models.User.name)
-          .join(models.User, models.User.id == models.RotaSlot.user_id)
-          .filter(
-              and_(models.RotaSlot.start < next_month,
-                   models.RotaSlot.end > first,
-                   models.RotaSlot.type.in_(["night_call", "day_call"]))
-          )
+          .join(models.User, models.User.id == models.RotaSlot.user_id, isouter=True)
+          .filter(models.RotaSlot.start >= first)
+          .filter(models.RotaSlot.start < next_month)
+          .filter(models.RotaSlot.type.in_(["night_call", "day_call"]))
           .order_by(models.RotaSlot.start.asc())
     )
     out = []
