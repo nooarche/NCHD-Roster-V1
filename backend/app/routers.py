@@ -123,19 +123,22 @@ def roster_build(req: schemas.RosterBuildRequest, db: Session = Depends(get_db))
     Simple month builder:
       - Clears existing day_call/night_call slots overlapping [month_start, next_month)
       - Assigns 1 night_call per day in round-robin across eligible users (pool_roles)
-      - (day_calls_per_day ignored for now; easy to extend later)
     """
-    # time window
     first = datetime(req.year, req.month, 1)
     next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
 
     # pool of eligible users
-    pool = db.query(models.User).filter(models.User.role.in_(req.pool_roles)).order_by(models.User.id.asc()).all()
+    pool = (
+        db.query(models.User)
+          .filter(models.User.role.in_(req.pool_roles))
+          .order_by(models.User.id.asc())
+          .all()
+    )
     if not pool:
         raise HTTPException(status_code=400, detail="No eligible users found for pool_roles")
     pool_ids = [u.id for u in pool]
 
-    # wipe existing on-call for that month
+    # wipe existing on-call in that window
     db.query(models.RotaSlot).filter(
         and_(models.RotaSlot.start < next_month,
              models.RotaSlot.end > first,
@@ -143,21 +146,23 @@ def roster_build(req: schemas.RosterBuildRequest, db: Session = Depends(get_db))
     ).delete(synchronize_session=False)
     db.commit()
 
-    # Assign night call: each calendar day gets 'night_calls_per_day' entries
+    # assign night calls
     created = 0
     idx = 0
     day = first
     while day < next_month:
-        # night call from 17:00 to 09:00 next day
-        for _ in range(req.night_calls_per_day):
-            uid = pool_ids[idx % len(pool_ids)]
-            start = day.replace(hour=17, minute=0)
-            end = (day + timedelta(days=1)).replace(hour=9, minute=0)
-            slot = models.RotaSlot(user_id=uid, post_id=None, start=start, end=end, type="night_call", labels={})
-            db.add(slot)
-            created += 1
-            idx += 1
-        # (optional) day_call generation could go here
+        # night call 17:00 → next day 09:00
+        start = day.replace(hour=17, minute=0, second=0, microsecond=0)
+        end = (day + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+        uid = pool_ids[idx % len(pool_ids)]
+        slot = models.RotaSlot(
+            user_id=uid, post_id=None,
+            start=start, end=end,
+            type="night_call", labels={}
+        )
+        db.add(slot)
+        created += 1
+        idx += 1
         day += timedelta(days=1)
 
     db.commit()
