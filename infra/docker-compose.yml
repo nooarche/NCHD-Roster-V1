@@ -8,6 +8,11 @@ services:
     ports: ["5432:5432"]
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roster -d rosterdb"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
 
   backend:
     build:
@@ -16,7 +21,8 @@ services:
     env_file:
       - ./env/backend.env
     depends_on:
-      - db
+      db:
+        condition: service_healthy 
     ports: ["8000:8000"]
 
   frontend:
