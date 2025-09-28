@@ -30,3 +30,22 @@ def roster_build(db: Session = Depends(get_db)):
 @api.post("/actions/roster-refresh")
 def roster_refresh(db: Session = Depends(get_db)):
     return {"status": "ok", "message": "Roster refresh stubbed."}
+
+@api.patch("/users/{user_id}", response_model=schemas.UserOut)
+def update_user(user_id: int, patch: schemas.UserUpdate, db: Session = Depends(get_db)):
+    u = db.query(models.User).get(user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    if patch.name is not None: u.name = patch.name
+    if patch.email is not None: u.email = patch.email
+    if patch.role is not None: u.role = patch.role
+    db.commit(); db.refresh(u)
+    return u
+
+@api.delete("/users/{user_id}")
+def delete_user(user_id: int, db: Session = Depends(get_db)):
+    u = db.query(models.User).get(user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    db.delete(u); db.commit()
+    return {"status": "deleted", "id": user_id}
