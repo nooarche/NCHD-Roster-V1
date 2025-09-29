@@ -71,6 +71,7 @@ def oncall_month(year: int, month: int, db: Session = Depends(get_db)):
     return out
 
 # start of /validate/rota
+# We can add OPD/supervision collisions once those tables are populated.
 
 @api.get("/validate/rota", response_model=schemas.ValidationReport)
 def validate_rota(year: Optional[int] = None, month: Optional[int] = None, db: Session = Depends(get_db)):
