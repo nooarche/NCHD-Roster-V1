@@ -1,0 +1,12 @@
+{
+  "max_continuous_hours": 24,
+  "min_daily_rest_hours": 11,
+  "max_hours_per_7_days": 60,
+  "max_consecutive_days": 6,
+  "max_consecutive_nights": 3,
+  "max_night_spread": 2,
+  "require_one_night_per_post_per_day": true,
+  "night_start": "17:00",
+  "night_end": "09:00",
+  "enforce_post_match_to_contract": true
+}
