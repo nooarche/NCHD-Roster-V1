@@ -342,3 +342,11 @@ def delete_contract(contract_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Contract not found")
     db.delete(obj); db.commit()
     return {"status":"deleted","id":contract_id}
+
+@api.delete("/oncall/{slot_id}")
+def oncall_delete(slot_id: int, db: Session = Depends(get_db)):
+    slot = db.query(models.RotaSlot).get(slot_id)
+    if not slot:
+        raise HTTPException(status_code=404, detail="On-call slot not found")
+    db.delete(slot); db.commit()
+    return {"status": "deleted", "id": slot_id}
