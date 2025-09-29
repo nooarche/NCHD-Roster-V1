@@ -189,3 +189,54 @@ def oncall_update(req: schemas.RosterUpdateRequest, db: Session = Depends(get_db
     db.commit(); db.refresh(slot)
     uname = db.query(models.User.name).filter(models.User.id==slot.user_id).scalar() or "Unassigned"
     return schemas.OnCallEvent(start=slot.start, end=slot.end, type=slot.type, user_id=slot.user_id or 0, user_name=uname)
+
+@api.post("/oncall/assign", response_model=schemas.OnCallEvent)
+def oncall_assign(req: schemas.OnCallAssignIn, db: Session = Depends(get_db)):
+    post_id = req.post_id
+    if not post_id:
+        post = db.query(models.Post).first()
+        if not post:
+            post = models.Post(title="General Service", opd_day="Wed")
+            db.add(post); db.commit(); db.refresh(post)
+        post_id = post.id
+    user = db.query(models.User).get(req.user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    slot = models.RotaSlot(
+        user_id=req.user_id, post_id=post_id,
+        start=req.start, end=req.end, type=req.type, labels={}
+    )
+    db.add(slot); db.commit(); db.refresh(slot)
+    return schemas.OnCallEvent(
+        start=slot.start, end=slot.end, type=slot.type,
+        user_id=slot.user_id or 0, user_name=user.name
+    )
+
+@api.post("/actions/autofill-by-post")
+def autofill_by_post(req: schemas.AutofillByPostIn, db: Session = Depends(get_db)):
+    first = datetime(req.year, req.month, 1)
+    next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+    created = 0
+    day = first
+    while day < next_month:
+        # find active contract for this post-day
+        c = (db.query(models.Contract)
+               .filter(models.Contract.post_id == req.post_id)
+               .filter(models.Contract.start <= day.date())
+               .filter((models.Contract.end == None) | (models.Contract.end >= day.date()))
+               .order_by(models.Contract.start.asc())
+               .first())
+        if c:
+            start = day.replace(hour=17, minute=0)
+            end   = (day + timedelta(days=1)).replace(hour=9, minute=0)
+            exists = (db.query(models.RotaSlot)
+                        .filter(models.RotaSlot.start == start,
+                                models.RotaSlot.type == "night_call")
+                        .first())
+            if not exists:
+                db.add(models.RotaSlot(user_id=c.user_id, post_id=req.post_id,
+                                       start=start, end=end, type="night_call", labels={}))
+                created += 1
+        day += timedelta(days=1)
+    db.commit()
+    return {"status":"ok", "created": created}
