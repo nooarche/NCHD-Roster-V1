@@ -33,6 +33,7 @@ class UserUpdate(BaseModel):
 
 
 class OnCallEvent(BaseModel):
+    slot_id: int 
     start: datetime
     end: datetime
     type: str
