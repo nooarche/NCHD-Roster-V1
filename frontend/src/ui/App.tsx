@@ -1,4 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react"
+import { AdminNav, AdminTab } from "./admin/AdminNav"
+import PostsPage from "./admin/PostsPage"
+import TeamsPage from "./admin/TeamsPage"
+import ContractsPage from "./admin/ContractsPage"
+
 
 type Role = "admin" | "supervisor" | "nchd" | "staff"
 type User = { id:number; name:string; email:string; role:Role }
@@ -70,13 +75,22 @@ function UsersTable({users}:{users:User[]}) {
 
 /** ===== Admin: On-call rules + validation + Users CRUD ===== */
 function AdminPanel({users, refresh}:{users:User[], refresh:()=>void}) {
+  const [subtab, setSubtab] = useState<AdminTab>("Users")
   return (
     <div>
-      <h2 style={{margin:"8px 0"}}>Admin view</h2>
-      <OnCallRules/>
-      <RosterBuilder/> 
-      <ValidationCard/>
-      <AdminUsers users={users} refresh={refresh}/>
+      <h2 style={{margin:"8px 0"}}>Admin</h2>
+      <AdminNav active={subtab} onChange={setSubtab}/>
+      {subtab==="Users" && <AdminUsers users={users} refresh={refresh}/>}
+      {subtab==="Posts" && <PostsPage/>}
+      {subtab==="Teams" && <TeamsPage/>}
+      {subtab==="Contracts" && <ContractsPage/>}
+      {subtab==="On-call" && (<>
+        <ValidationCard/>
+        {/* You can reuse Staff calendar here and add edit modal later */}
+      </>)}
+      {subtab==="Core Hours" && <div>Core hours profiles/overrides (next)</div>}
+      {subtab==="OPD" && <div>OPD sessions editor (next)</div>}
+      {subtab==="Supervision" && <div>Supervision slots editor (next)</div>}
     </div>
   )
 }
