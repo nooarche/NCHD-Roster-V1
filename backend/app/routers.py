@@ -70,47 +70,170 @@ def oncall_month(year: int, month: int, db: Session = Depends(get_db)):
         ))
     return out
 
+# start of /validate/rota
+
 @api.get("/validate/rota", response_model=schemas.ValidationReport)
-def validate_rota(db: Session = Depends(get_db)):
+def validate_rota(year: Optional[int] = None, month: Optional[int] = None, db: Session = Depends(get_db)):
     """
-    Minimal checks (extend as needed):
-      - Duty length <= 24h (EWTD)
-      - Each calendar day has at most one night_call (simple duplication guard)
+    Runs policy-driven checks over a window (default = all future + current month).
+    Returns a list of ValidationIssue {user_id, user_name, slot_id, message}.
     """
+    from collections import defaultdict
+    from sqlalchemy import and_
+    import math
+
+    # 1) Load policy (simple: first CoreHoursProfile or hard-coded defaults)
+    policy = {
+        "max_continuous_hours": 24,
+        "min_daily_rest_hours": 11,
+        "max_hours_per_7_days": 60,
+        "max_consecutive_days": 6,
+        "max_consecutive_nights": 3,
+        "max_night_spread": 2,
+        "require_one_night_per_post_per_day": True,
+        "night_start": "17:00",
+        "night_end": "09:00",
+        "enforce_post_match_to_contract": True,
+    }
+
+    # 2) Window
+    if year and month:
+        first = datetime(year, month, 1)
+        next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+        slot_filter = and_(models.RotaSlot.start < next_month, models.RotaSlot.end > first)
+    else:
+        # default: current month
+        today = datetime.utcnow().date().replace(day=1)
+        first = datetime(today.year, today.month, 1)
+        next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+        slot_filter = and_(models.RotaSlot.start < next_month, models.RotaSlot.end > first)
+
     issues: list[schemas.ValidationIssue] = []
 
-    # 24h duty check
+    # 3) Fetch slots (with users)
     slots = (
         db.query(models.RotaSlot, models.User.name)
           .join(models.User, models.User.id == models.RotaSlot.user_id, isouter=True)
+          .filter(slot_filter)
+          .order_by(models.RotaSlot.user_id.asc(), models.RotaSlot.start.asc())
           .all()
     )
+
+    # Index by user
+    by_user: dict[int, list[models.RotaSlot]] = defaultdict(list)
+    for slot, _uname in slots:
+        if slot.user_id:
+            by_user[slot.user_id].append(slot)
+
+    # 4) Basic integrity
+    for slot, uname in slots:
+        if slot.end <= slot.start:
+            issues.append(_issue(slot, uname, "Slot end is not after start"))
+    # overlaps
+    for uid, arr in by_user.items():
+        arr.sort(key=lambda s: s.start)
+        for a, b in zip(arr, arr[1:]):
+            if b.start < a.end:
+                uname = db.query(models.User.name).filter(models.User.id==uid).scalar()
+                issues.append(_issue(a, uname, "Overlapping assignment with next slot"))
+
+    # 5) Continuous duty length
     for slot, uname in slots:
         hours = (slot.end - slot.start).total_seconds() / 3600.0
-        if hours > 24.0:
-            issues.append(schemas.ValidationIssue(
-                user_id=slot.user_id or 0,
-                user_name=uname or "Unassigned",
-                slot_id=slot.id,
-                message=f"Duty exceeds 24h ({hours:.1f}h)"
-            ))
+        if hours > policy["max_continuous_hours"]:
+            issues.append(_issue(slot, uname, f"Duty exceeds {policy['max_continuous_hours']}h ({hours:.1f}h)"))
 
-    # one night_call per day (simple)
-    from collections import defaultdict
-    per_day = defaultdict(list)
-    for slot, _ in slots:
-        if slot.type == "night_call":
-            key = slot.start.date()
-            per_day[key].append(slot.id)
-    for day, ids in per_day.items():
-        if len(ids) > 1:
-            for sid in ids[1:]:
-                issues.append(schemas.ValidationIssue(
-                    user_id=0, user_name="—", slot_id=sid,
-                    message=f"Multiple night_call assignments on {day}"
-                ))
+    # 6) Daily rest after duty
+    for uid, arr in by_user.items():
+        uname = db.query(models.User.name).filter(models.User.id==uid).scalar()
+        arr.sort(key=lambda s: s.start)
+        for a, b in zip(arr, arr[1:]):
+            gap = (b.start - a.end).total_seconds() / 3600.0
+            if gap < policy["min_daily_rest_hours"]:
+                issues.append(_issue(a, uname, f"Rest gap {gap:.1f}h < {policy['min_daily_rest_hours']}h before next duty"))
+
+    # 7) Max hours per 7 days (simple rolling)
+    for uid, arr in by_user.items():
+        uname = db.query(models.User.name).filter(models.User.id==uid).scalar()
+        arr.sort(key=lambda s: s.start)
+        for i in range(len(arr)):
+            window_start = arr[i].start
+            window_end = window_start + timedelta(days=7)
+            total = 0.0
+            for s in arr:
+                if s.start < window_end and s.end > window_start:
+                    total += (min(s.end, window_end) - max(s.start, window_start)).total_seconds()/3600.0
+            if total > policy["max_hours_per_7_days"]:
+                issues.append(_issue(arr[i], uname, f"Hours {total:.1f}h in 7 days > {policy['max_hours_per_7_days']}h"))
+
+    # 8) Consecutive days / nights
+    def is_night(s: models.RotaSlot): return s.type == "night_call"
+    for uid, arr in by_user.items():
+        uname = db.query(models.User.name).filter(models.User.id==uid).scalar()
+        # consecutive days
+        cons = 1
+        for a, b in zip(arr, arr[1:]):
+            if (b.start.date() - a.start.date()).days == 1:
+                cons += 1
+            else:
+                cons = 1
+            if cons > policy["max_consecutive_days"]:
+                issues.append(_issue(b, uname, f"Consecutive days {cons} exceeds {policy['max_consecutive_days']}"))
+        # consecutive nights
+        nights = [s for s in arr if is_night(s)]
+        cons_n = 1
+        for a, b in zip(nights, nights[1:]):
+            if (b.start.date() - a.start.date()).days == 1:
+                cons_n += 1
+            else:
+                cons_n = 1
+            if cons_n > policy["max_consecutive_nights"]:
+                issues.append(_issue(b, uname, f"Consecutive nights {cons_n} exceeds {policy['max_consecutive_nights']}"))
+
+    # 9) Exactly one night per post/day (if required)
+    if policy["require_one_night_per_post_per_day"]:
+        from collections import defaultdict
+        per = defaultdict(list)  # (date, post_id) -> slots
+        for slot, _uname in slots:
+            if slot.type == "night_call":
+                key = (slot.start.date(), slot.post_id)
+                per[key].append(slot)
+        # duplicates
+        for key, arr in per.items():
+            if len(arr) > 1:
+                for s in arr[1:]:
+                    uname = db.query(models.User.name).filter(models.User.id==s.user_id).scalar()
+                    issues.append(_issue(s, uname, f"Multiple night_call for post {key[1]} on {key[0]}"))
+        # missing coverage per post/day (optional: check against posts table)
+        # If you want strict coverage, iterate posts and days in window and add a "missing" issue
+
+    # 10) Contract window and post match
+    for slot, uname in slots:
+        if not slot.user_id:
+            continue
+        c = (db.query(models.Contract)
+               .filter(models.Contract.user_id == slot.user_id)
+               .filter(models.Contract.start <= slot.start.date())
+               .filter((models.Contract.end == None) | (models.Contract.end >= slot.start.date()))
+               .order_by(models.Contract.start.asc())
+               .first())
+        if not c:
+            issues.append(_issue(slot, uname, "No active contract for user on this date"))
+        else:
+            if policy["enforce_post_match_to_contract"] and slot.post_id != c.post_id:
+                issues.append(_issue(slot, uname, f"Post {slot.post_id} does not match contract post {c.post_id}"))
 
     return schemas.ValidationReport(ok=(len(issues) == 0), issues=issues)
+
+def _issue(slot: "models.RotaSlot", uname: Optional[str], msg: str) -> schemas.ValidationIssue:
+    return schemas.ValidationIssue(
+        user_id=slot.user_id or 0,
+        user_name=uname or "Unassigned",
+        slot_id=slot.id or 0,
+        message=msg,
+    )
+#end of /validate/rota
+
 
 @api.post("/actions/roster-build", response_model=schemas.RosterBuildResult)
 def roster_build(req: schemas.RosterBuildRequest, db: Session = Depends(get_db)):
