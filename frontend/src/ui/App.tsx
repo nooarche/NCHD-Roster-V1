@@ -3,6 +3,7 @@ import { AdminNav, AdminTab } from "./admin/AdminNav"
 import PostsPage from "./admin/PostsPage"
 import TeamsPage from "./admin/TeamsPage"
 import ContractsPage from "./admin/ContractsPage"
+import AdminOncallPage from "./admin/AdminOncallPage"
 
 
 type Role = "admin" | "supervisor" | "nchd" | "staff"
@@ -88,6 +89,7 @@ function AdminPanel({users, refresh}:{users:User[], refresh:()=>void}) {
         <ValidationCard/>
         {/* You can reuse Staff calendar here and add edit modal later */}
       </>)}
+      {subtab==="On-call" && <AdminOncallPage/>}
       {subtab==="Core Hours" && <div>Core hours profiles/overrides (next)</div>}
       {subtab==="OPD" && <div>OPD sessions editor (next)</div>}
       {subtab==="Supervision" && <div>Supervision slots editor (next)</div>}
