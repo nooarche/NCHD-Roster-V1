@@ -50,7 +50,6 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
 
 @api.get("/oncall/month", response_model=List[schemas.OnCallEvent])
 def oncall_month(year: int, month: int, db: Session = Depends(get_db)):
-    from sqlalchemy import func
     first = datetime(year, month, 1)
     next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
 
@@ -65,6 +64,7 @@ def oncall_month(year: int, month: int, db: Session = Depends(get_db)):
     out = []
     for slot, uname in q.all():
         out.append(schemas.OnCallEvent(
+            slot_id=slot.id,                 # ⬅️ now included
             start=slot.start, end=slot.end, type=slot.type,
             user_id=slot.user_id or 0, user_name=uname or "Unassigned"
         ))
