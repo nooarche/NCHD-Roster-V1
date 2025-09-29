@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react"
+import ValidationCard from "./ValidationCard"
+
 const API = (import.meta as any).env?.VITE_API_BASE || "/api"
 
 type User = { id:number; name:string; role:string }
@@ -104,6 +106,8 @@ export default function AdminOncallPage(){
         <span style={{marginLeft:"auto",fontSize:12,color:"#666"}}>{events.length} events</span>
       </div>
 
+      <ValidationCard year={year} month={month} /> 
+      
       {/* Autofill panel */}
       <div style={{display:"flex", alignItems:"center", gap:8, padding:8, border:"1px solid #eee", borderRadius:6, marginBottom:10}}>
         <span>Autofill nights by Post (this month):</span>
