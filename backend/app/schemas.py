@@ -1,7 +1,6 @@
-
 from pydantic import BaseModel, EmailStr, Field
-from datetime import Date, Time
-from typing import Optional, list, Any
+from datetime import datetime, date, time
+from typing import Optional, List, Any
 
 class UserCreate(BaseModel):
     name: str
@@ -32,7 +31,6 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     role: Optional[str] = None
 
-from typing import List
 
 class OnCallEvent(BaseModel):
     start: datetime
