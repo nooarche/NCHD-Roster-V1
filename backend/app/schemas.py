@@ -1,6 +1,6 @@
 
 from pydantic import BaseModel, EmailStr, Field
-from datetime import date, time
+from datetime import date, time start_time: Time, end_time: Time
 from typing import Optional, list, Any
 
 class UserCreate(BaseModel):
