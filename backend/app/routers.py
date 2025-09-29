@@ -240,3 +240,105 @@ def autofill_by_post(req: schemas.AutofillByPostIn, db: Session = Depends(get_db
         day += timedelta(days=1)
     db.commit()
     return {"status":"ok", "created": created}
+
+
+from fastapi import Body
+
+# ---- Posts ----
+@api.get("/posts", response_model=List[schemas.PostOut])
+def list_posts(db: Session = Depends(get_db)):
+    return db.query(models.Post).order_by(models.Post.id.asc()).all()
+
+@api.post("/posts", response_model=schemas.PostOut)
+def create_post(p: schemas.PostIn, db: Session = Depends(get_db)):
+    post = models.Post(title=p.title, opd_day=p.opd_day)
+    db.add(post); db.commit(); db.refresh(post)
+    return post
+
+@api.patch("/posts/{post_id}", response_model=schemas.PostOut)
+def update_post(post_id: int, patch: schemas.PostIn, db: Session = Depends(get_db)):
+    post = db.query(models.Post).get(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if patch.title is not None: post.title = patch.title
+    if patch.opd_day is not None: post.opd_day = patch.opd_day
+    db.commit(); db.refresh(post)
+    return post
+
+@api.delete("/posts/{post_id}")
+def delete_post(post_id: int, db: Session = Depends(get_db)):
+    post = db.query(models.Post).get(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    db.delete(post); db.commit()
+    return {"status":"deleted","id":post_id}
+
+# ---- Teams ----
+@api.get("/teams", response_model=List[schemas.TeamOut])
+def list_teams(db: Session = Depends(get_db)):
+    return db.query(models.Team).order_by(models.Team.id.asc()).all()
+
+@api.post("/teams", response_model=schemas.TeamOut)
+def create_team(t: schemas.TeamIn, db: Session = Depends(get_db)):
+    team = models.Team(name=t.name, supervisor_id=t.supervisor_id)
+    db.add(team); db.commit(); db.refresh(team)
+    return team
+
+@api.patch("/teams/{team_id}", response_model=schemas.TeamOut)
+def update_team(team_id: int, patch: schemas.TeamIn, db: Session = Depends(get_db)):
+    team = db.query(models.Team).get(team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    if patch.name is not None: team.name = patch.name
+    if patch.supervisor_id is not None: team.supervisor_id = patch.supervisor_id
+    db.commit(); db.refresh(team)
+    return team
+
+@api.delete("/teams/{team_id}")
+def delete_team(team_id: int, db: Session = Depends(get_db)):
+    team = db.query(models.Team).get(team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    db.delete(team); db.commit()
+    return {"status":"deleted","id":team_id}
+
+# ---- Contracts ----
+@api.get("/contracts", response_model=List[schemas.ContractOut])
+def list_contracts(db: Session = Depends(get_db)):
+    return db.query(models.Contract).order_by(models.Contract.start.desc()).all()
+
+@api.post("/contracts", response_model=schemas.ContractOut)
+def create_contract(c: schemas.ContractIn, db: Session = Depends(get_db)):
+    # optional: overlap check (simple)
+    overlapping = (
+        db.query(models.Contract)
+          .filter(models.Contract.user_id == c.user_id)
+          .filter(models.Contract.post_id == c.post_id)
+          .filter(models.Contract.start <= (c.end or c.start))
+          .filter((models.Contract.end == None) | (models.Contract.end >= c.start))
+          .first()
+    )
+    if overlapping:
+        raise HTTPException(status_code=400, detail="Overlapping contract exists for this user & post")
+    obj = models.Contract(**c.model_dump())
+    db.add(obj); db.commit(); db.refresh(obj)
+    return obj
+
+@api.patch("/contracts/{contract_id}", response_model=schemas.ContractOut)
+def update_contract(contract_id: int, patch: schemas.ContractIn, db: Session = Depends(get_db)):
+    obj = db.query(models.Contract).get(contract_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    data = patch.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(obj, k, v)
+    db.commit(); db.refresh(obj)
+    return obj
+
+@api.delete("/contracts/{contract_id}")
+def delete_contract(contract_id: int, db: Session = Depends(get_db)):
+    obj = db.query(models.Contract).get(contract_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Contract not found")
+    db.delete(obj); db.commit()
+    return {"status":"deleted","id":contract_id}
