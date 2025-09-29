@@ -115,62 +115,62 @@ def validate_rota(db: Session = Depends(get_db)):
 @api.post("/actions/roster-build", response_model=schemas.RosterBuildResult)
 def roster_build(req: schemas.RosterBuildRequest, db: Session = Depends(get_db)):
     """
-    Build a month of on-call:
-      - Ensures at least one Post exists (creates 'General Service' if none)
-      - Clears existing on-call in [month_start, next_month)
-      - Assigns 1 night_call per day round-robin across eligible users
+    Contracts-aware month builder:
+      - For each day in the target month, compute eligible users = NCHDs with an active Contract on that date
+      - Wipes existing night/day call in the window
+      - Assigns 1 night_call per day, round-robin over that day's eligible pool
+      - Uses the eligible user's contract.post_id for the created slot
     """
     first = datetime(req.year, req.month, 1)
     next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
 
-    # Ensure a Post exists (to satisfy NOT NULL post_id schemas)
-    post = db.query(models.Post).first()
-    if not post:
-        post = models.Post(title="General Service", opd_day="Wed")
-        db.add(post)
-        db.commit(); db.refresh(post)
-
-    # Eligible users
-    pool = (
-        db.query(models.User)
-          .filter(models.User.role.in_(req.pool_roles))
-          .order_by(models.User.id.asc())
-          .all()
-    )
-    if not pool:
-        raise HTTPException(status_code=400, detail="No eligible users found for pool_roles")
-    pool_ids = [u.id for u in pool]
-
-    # Wipe existing on-call in window
+    # wipe existing calls in window
     db.query(models.RotaSlot).filter(
         and_(models.RotaSlot.start < next_month,
              models.RotaSlot.end > first,
-             models.RotaSlot.type.in_(["night_call","day_call"]))
+             models.RotaSlot.type.in_(["night_call", "day_call"]))
     ).delete(synchronize_session=False)
     db.commit()
 
-    # Assign night calls
     created = 0
-    idx = 0
+    rr_ix = 0  # persistent RR index across days (gives fair spread)
     day = first
     while day < next_month:
-        start = day.replace(hour=17, minute=0, second=0, microsecond=0)
-        end   = (day + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
-        uid = pool_ids[idx % len(pool_ids)]
-        slot = models.RotaSlot(
-            user_id=uid,
-            post_id=post.id,             # ← ensure NOT NULL
-            start=start, end=end,
-            type="night_call",
-            labels={}
-        )
-        db.add(slot)
-        created += 1
-        idx += 1
+        # Eligible contracts (active that day)
+        active = (db.query(models.Contract)
+                    .join(models.User, models.User.id == models.Contract.user_id)
+                    .filter(models.User.role == "nchd")
+                    .filter(models.Contract.start <= day.date())
+                    .filter((models.Contract.end == None) | (models.Contract.end >= day.date()))
+                    .order_by(models.Contract.user_id.asc(), models.Contract.start.asc())
+                    .all())
+
+        if active:
+            uid_list = [c.user_id for c in active]
+            # round-robin pick, but keep user stable if multiple contracts for same person
+            chosen_uid = uid_list[rr_ix % len(uid_list)]
+            # pick a contract for that user (first match)
+            chosen_c = next(c for c in active if c.user_id == chosen_uid)
+
+            start = day.replace(hour=17, minute=0, second=0, microsecond=0)
+            end   = (day + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+
+            slot = models.RotaSlot(
+                user_id=chosen_uid,
+                post_id=chosen_c.post_id,         # use contract's post
+                start=start, end=end,
+                type="night_call",
+                labels={}
+            )
+            db.add(slot)
+            created += 1
+            rr_ix += 1
+
         day += timedelta(days=1)
 
     db.commit()
     return schemas.RosterBuildResult(created_slots=created)
+    
 
 @api.post("/oncall/update", response_model=schemas.OnCallEvent)
 def oncall_update(req: schemas.RosterUpdateRequest, db: Session = Depends(get_db)):
