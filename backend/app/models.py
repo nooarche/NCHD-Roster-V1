@@ -80,3 +80,60 @@ class Audit(Base):
     after = Column(JSON)
     reason = Column(String(255))
     created_at = Column(DateTime)
+
+# models.py (new)
+class Team(Base):
+    __tablename__ = "teams"
+    id = sa.Column(sa.Integer, primary_key=True)
+    name = sa.Column(sa.String(100), unique=True, nullable=False)
+    supervisor_id = sa.Column(sa.Integer, sa.ForeignKey("users.id"), nullable=True)  # consultant
+
+class Contract(Base):
+    __tablename__ = "contracts"
+    id = sa.Column(sa.Integer, primary_key=True)
+    user_id = sa.Column(sa.Integer, sa.ForeignKey("users.id"), nullable=False)
+    post_id = sa.Column(sa.Integer, sa.ForeignKey("posts.id"), nullable=False)
+    team_id = sa.Column(sa.Integer, sa.ForeignKey("teams.id"), nullable=True)  # inferred from post/team if you like
+    start = sa.Column(sa.Date, nullable=False)
+    end = sa.Column(sa.Date, nullable=True)  # open-ended (e.g., supervisors)
+
+class TeamMember(Base):
+    __tablename__ = "team_members"
+    id = sa.Column(sa.Integer, primary_key=True)
+    team_id = sa.Column(sa.Integer, sa.ForeignKey("teams.id"), nullable=False)
+    user_id = sa.Column(sa.Integer, sa.ForeignKey("users.id"), nullable=False)
+    role = sa.Column(sa.String(32), nullable=False, default="nchd")  # or "supervisor", "staff"
+
+# Core hours & policy
+class CoreHoursProfile(Base):
+    __tablename__ = "core_hours_profiles"
+    id = sa.Column(sa.Integer, primary_key=True)
+    name = sa.Column(sa.String(80), nullable=False)
+    weekly_hours = sa.Column(sa.Integer, nullable=False)  # e.g., 39
+    policy_json = sa.Column(sa.JSON, nullable=False, default=dict)  # OPD rules, rest rules, etc.
+
+class CoreHoursOverride(Base):
+    __tablename__ = "core_hours_overrides"
+    id = sa.Column(sa.Integer, primary_key=True)
+    user_id = sa.Column(sa.Integer, sa.ForeignKey("users.id"), nullable=False)
+    start = sa.Column(sa.Date, nullable=False)
+    end = sa.Column(sa.Date, nullable=True)
+    weekly_hours = sa.Column(sa.Integer, nullable=False)  # personal override
+
+class OPDSession(Base):
+    __tablename__ = "opd_sessions"
+    id = sa.Column(sa.Integer, primary_key=True)
+    user_id = sa.Column(sa.Integer, sa.ForeignKey("users.id"), nullable=False)
+    day_of_week = sa.Column(sa.Integer, nullable=False)  # 0=Mon..6=Sun
+    start_time = sa.Column(sa.Time, nullable=False)
+    end_time = sa.Column(sa.Time, nullable=False)
+    within_core = sa.Column(sa.Boolean, default=True)
+
+class SupervisionSlot(Base):
+    __tablename__ = "supervision_slots"
+    id = sa.Column(sa.Integer, primary_key=True)
+    supervisor_id = sa.Column(sa.Integer, sa.ForeignKey("users.id"), nullable=False)
+    nchd_id = sa.Column(sa.Integer, sa.ForeignKey("users.id"), nullable=False)
+    day_of_week = sa.Column(sa.Integer, nullable=False)
+    start_time = sa.Column(sa.Time, nullable=False)
+    end_time = sa.Column(sa.Time, nullable=False)
