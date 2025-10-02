@@ -1,48 +1,69 @@
+version: "3.9"
+
 services:
   db:
     image: postgres:16-alpine
+    container_name: infra-db-1
     environment:
+      POSTGRES_DB: rosterdb
       POSTGRES_USER: roster
       POSTGRES_PASSWORD: roster
-      POSTGRES_DB: rosterdb
-    ports: ["5432:5432"]
+    ports:
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U roster -d rosterdb"]
-      interval: 2s
-      timeout: 2s
-      retries: 15
+      test: ["CMD-SHELL", "pg_isready -U roster -d rosterdb || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   backend:
     build:
-      context: ../backend          # ← from infra/ to project backend/
-      dockerfile: Dockerfile
-    env_file:
-      - ./env/backend.env          # ← from infra/ to infra/env/backend.env
+      context: ..
+      dockerfile: backend/Dockerfile
+    image: infra-backend:latest
+    container_name: infra-backend-1
+    environment:
+      DATABASE_URL: postgresql+psycopg2://roster:roster@db:5432/rosterdb
+      # Optional: make Uvicorn verbose
+      LOG_LEVEL: info
     depends_on:
       db:
         condition: service_healthy
-    ports: ["8000:8000"]
+    ports:
+      - "8000:8000"
 
   frontend:
     build:
-      context: ../frontend         # ← from infra/ to project frontend/
+      context: ../frontend
       dockerfile: Dockerfile
-    # If using nginx proxy, set the API base to /api (see nginx service below)
+      target: build
+    image: infra-frontend:latest
+    container_name: infra-frontend-1
+    # Dev: run Vite server inside this container for quick iteration
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    working_dir: /app
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
     environment:
-      - VITE_API_BASE=/api
+      VITE_API_BASE: http://localhost:8000
+    ports:
+      - "5173:5173"
     depends_on:
       - backend
-    ports: ["5173:5173"]
 
   nginx:
     build:
       context: ./nginx
       dockerfile: Dockerfile
+    container_name: infra-nginx-1
     depends_on:
       - backend
       - frontend
     ports:
       - "80:80"
 
+volumes:
+  pgdata: {}
