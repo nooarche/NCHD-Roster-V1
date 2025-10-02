@@ -2,7 +2,38 @@ import sqlalchemy as sa
 from sqlalchemy.orm import relationship
 from .db import Base
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, JSON, Text, Date
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, JSON, Text, Date, Float
+
+class Post(Base):
+    __tablename__ = "posts"
+    id = Column(Integer, primary_key=True)
+    title = Column(String(100), nullable=False)
+    site = Column(String(100))             # e.g., "Wicklow CMHT"
+    grade = Column(String(32))             # e.g., "Registrar", "SHO"
+    fte = Column(Float, default=1.0)       # Full-Time Equivalent (0.1–1.0)
+    status = Column(String(32), default="ACTIVE_ROSTERABLE")  # ACTIVE_ROSTERABLE | VACANT_ROSTERABLE | VACANT_UNROSTERABLE
+
+    # OPD and supervision/teaching & core hours templates as JSON for now
+    opd = Column(JSON, nullable=True)          # {"days": ["Mon","Thu"], "guard": true, "sessions": {"Mon":[["09:30","12:30"]]}}
+    teaching = Column(JSON, nullable=True)     # {"protected":[{"dow":"Wed","start":"14:00","end":"16:30","ph_rule":"NA_NO_COMP"}]}
+    supervision = Column(JSON, nullable=True)  # {"academic":{"mins":60,"pref":{"dow":"Thu","time":"15:00"}},
+                                               #  "clinical":{"mins":60,"on_opd_days":True}}
+    core_hours = Column(JSON, nullable=True)   # {"Mon-Thu":{"start":"09:00","end":"17:00","break":["13:00","13:30"]},
+                                               #  "Fri":{"start":"09:00","end":"16:00","break":["13:00","13:30"]}}
+    eligibility = Column(JSON, nullable=True)  # {"day_call":True,"night_call":True,"weekend":True,"ph":True,"notes":""}
+    notes = Column(Text)
+
+    vacancy_windows = relationship("VacancyWindow", back_populates="post", cascade="all, delete-orphan")
+
+class VacancyWindow(Base):
+    __tablename__ = "vacancy_windows"
+    id = Column(Integer, primary_key=True)
+    post_id = Column(Integer, ForeignKey("posts.id"), nullable=False)
+    status = Column(String(32), nullable=False)      # VACANT_ROSTERABLE | VACANT_UNROSTERABLE
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=True)           # null = open-ended
+
+    post = relationship("Post", back_populates="vacancy_windows")
 
 class User(Base):
     __tablename__ = "users"
