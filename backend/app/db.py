@@ -7,8 +7,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql+psycopg://roster:roste
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
-class Base(DeclarativeBase):
-    pass
+Base = declarative_base()
 
 def get_db():
     db = SessionLocal()
