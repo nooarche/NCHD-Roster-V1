@@ -6,6 +6,7 @@ import ContractsPage from "./admin/ContractsPage"
 import AdminOncallPage from "./admin/AdminOncallPage"
 
 
+
 type Role = "admin" | "supervisor" | "nchd" | "staff"
 type User = { id:number; name:string; email:string; role:Role }
 type OnCallEvent = { start:string; end:string; type:string; user_id:number; user_name:string }
@@ -145,10 +146,8 @@ function ValidationCard() {
   )
 }
 
-// frontend/src/ui/App.tsx
-import React, { useEffect, useState } from "react"
 
-const API = (import.meta as any).env.VITE_API_BASE || "http://localhost:8000"
+
 
 function usePosts() {
   const [posts, setPosts] = useState<any[]>([])
