@@ -1,6 +1,41 @@
 from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime, date, time
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Literal
+
+PostStatus = Literal["ACTIVE_ROSTERABLE","VACANT_ROSTERABLE","VACANT_UNROSTERABLE"]
+VacancyStatus = Literal["VACANT_ROSTERABLE","VACANT_UNROSTERABLE"]
+
+class PostBase(BaseModel):
+    title: str
+    site: Optional[str] = None
+    grade: Optional[str] = None
+    fte: float = Field(1.0, ge=0.1, le=1.0)
+    status: PostStatus = "ACTIVE_ROSTERABLE"
+    opd: Optional[Any] = None
+    teaching: Optional[Any] = None
+    supervision: Optional[Any] = None
+    core_hours: Optional[Any] = None
+    eligibility: Optional[Any] = None
+    notes: Optional[str] = None
+
+class PostCreate(PostBase):
+    pass
+
+class PostOut(PostBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+class VacancyWindowCreate(BaseModel):
+    status: VacancyStatus
+    start_date: date
+    end_date: Optional[date] = None
+
+class VacancyWindowOut(VacancyWindowCreate):
+    id: int
+    post_id: int
+    class Config:
+        from_attributes = True
 
 class UserCreate(BaseModel):
     name: str
