@@ -43,12 +43,7 @@ class User(Base):
     role = Column(String(32), nullable=False)  # admin, supervisor, nchd, staff
     created_at = Column(DateTime)
 
-class Post(Base):
-    __tablename__ = "posts"
-    id = Column(Integer, primary_key=True)
-    title = Column(String(100), nullable=False)
-    opd_day = Column(String(16))
-    notes = Column(Text)
+
 
 class Holiday(Base):
     __tablename__ = "holidays"
