@@ -145,6 +145,83 @@ function ValidationCard() {
   )
 }
 
+// frontend/src/ui/App.tsx
+import React, { useEffect, useState } from "react"
+
+const API = (import.meta as any).env.VITE_API_BASE || "http://localhost:8000"
+
+function usePosts() {
+  const [posts, setPosts] = useState<any[]>([])
+  const refresh = () => fetch(`${API}/posts`).then(r=>r.json()).then(setPosts).catch(()=>{})
+  useEffect(refresh, [])
+  return { posts, refresh }
+}
+
+export function App() {
+  const users = useUsers()
+  const { posts, refresh } = usePosts()
+  const [form, setForm] = useState<any>({ title:"", site:"", grade:"", fte:1.0, status:"ACTIVE_ROSTERABLE" })
+  const save = async () => {
+    await fetch(`${API}/posts`, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(form) })
+    setForm({ title:"", site:"", grade:"", fte:1.0, status:"ACTIVE_ROSTERABLE" })
+    refresh()
+  }
+  const addVacancy = async (postId:number) => {
+    const payload = { status:"VACANT_UNROSTERABLE", start_date:new Date().toISOString().slice(0,10) }
+    await fetch(`${API}/posts/${postId}/vacancy`, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(payload) })
+    refresh()
+  }
+
+  return (
+    <div style={{fontFamily:"system-ui", margin:"2rem", display:"grid", gap:"1.5rem"}}>
+      <h1>NCHD Rostering & Leave System</h1>
+
+      <section>
+        <h2>Admin · Post Builder</h2>
+        <div style={{display:"grid", gap:"0.5rem", maxWidth:520}}>
+          <input placeholder="Title" value={form.title} onChange={e=>setForm({...form, title:e.target.value})}/>
+          <input placeholder="Site" value={form.site} onChange={e=>setForm({...form, site:e.target.value})}/>
+          <input placeholder="Grade" value={form.grade} onChange={e=>setForm({...form, grade:e.target.value})}/>
+          <input placeholder="FTE (0.1–1.0)" type="number" step="0.1" value={form.fte} onChange={e=>setForm({...form, fte:parseFloat(e.target.value)})}/>
+          <select value={form.status} onChange={e=>setForm({...form, status:e.target.value})}>
+            <option>ACTIVE_ROSTERABLE</option>
+            <option>VACANT_ROSTERABLE</option>
+            <option>VACANT_UNROSTERABLE</option>
+          </select>
+          <button onClick={save}>Save Post</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Posts</h2>
+        <ul>
+          {posts.map(p => (
+            <li key={p.id} style={{marginBottom:"0.75rem"}}>
+              <strong>{p.title}</strong> · {p.site} · {p.grade} · FTE {p.fte} · <em>{p.status}</em>{" "}
+              <button onClick={()=>addVacancy(p.id)}>Mark Unrosterable (from today)</button>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section>
+        <h2>Users</h2>
+        <ul>
+          {users.map(u => <li key={u.id}>{u.name} — {u.role}</li>)}
+        </ul>
+      </section>
+    </div>
+  )
+}
+
+function useUsers() {
+  const [users, setUsers] = useState<any[]>([])
+  useEffect(() => {
+    fetch(`${API}/users`).then(r => r.json()).then(setUsers).catch(()=>{})
+  }, [])
+  return users
+}
+
 /** Admin: Users CRUD */
 function AdminUsers({users, refresh}:{users:User[], refresh:()=>void}) {
   const [form, setForm] = useState<{name:string; email:string; role:Role}>({name:"", email:"", role:"nchd"})
