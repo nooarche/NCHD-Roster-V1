@@ -9,13 +9,22 @@ from . import models, schemas
 
 api = APIRouter()
 
+
+
+@api.get("/users")
+def list_users(db: Session = Depends(get_db)) -> List[dict]:
+    # TEMP stub so the UI doesn't 404; replace with real query later.
+    return []
+
+#@api.get("/users", response_model=List[schemas.UserOut])
+#def list_users(db: Session = Depends(get_db)):
+#    return db.query(models.User).all()
+
 @api.get("/health")
 def health():
     return {"status": "ok"}
 
-@api.get("/users", response_model=List[schemas.UserOut])
-def list_users(db: Session = Depends(get_db)):
-    return db.query(models.User).all()
+
 
 @api.post("/users", response_model=schemas.UserOut)
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
