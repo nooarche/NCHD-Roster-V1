@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from .db import get_db
 from . import models, schemas
 from typing import List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from sqlalchemy import and_
 
 api = APIRouter()
@@ -69,6 +69,100 @@ def oncall_month(year: int, month: int, db: Session = Depends(get_db)):
             user_id=slot.user_id or 0, user_name=uname or "Unassigned"
         ))
     return out
+
+# backend/app/routers.py
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from .db import get_db
+from . import models, schemas
+from typing import List
+from datetime import date
+
+api = APIRouter()
+
+# ... existing health, users, actions stubs ...
+
+# POSTS
+@api.get("/posts", response_model=List[schemas.PostOut])
+def list_posts(db: Session = Depends(get_db)):
+    return db.query(models.Post).all()
+
+@api.post("/posts", response_model=schemas.PostOut)
+def create_post(data: schemas.PostCreate, db: Session = Depends(get_db)):
+    p = models.Post(**data.dict())
+    db.add(p); db.commit(); db.refresh(p)
+    return p
+
+@api.get("/posts/{post_id}", response_model=schemas.PostOut)
+def get_post(post_id: int, db: Session = Depends(get_db)):
+    p = db.query(models.Post).get(post_id)
+    if not p: raise HTTPException(404, "Post not found")
+    return p
+
+@api.put("/posts/{post_id}", response_model=schemas.PostOut)
+def update_post(post_id: int, data: schemas.PostCreate, db: Session = Depends(get_db)):
+    p = db.query(models.Post).get(post_id)
+    if not p: raise HTTPException(404, "Post not found")
+    for k, v in data.dict().items():
+        setattr(p, k, v)
+    db.commit(); db.refresh(p)
+    return p
+
+@api.delete("/posts/{post_id}")
+def delete_post(post_id: int, db: Session = Depends(get_db)):
+    p = db.query(models.Post).get(post_id)
+    if not p: raise HTTPException(404, "Post not found")
+    db.delete(p); db.commit()
+    return {"status": "ok"}
+
+# VACANCY WINDOWS
+@api.get("/posts/{post_id}/vacancy", response_model=List[schemas.VacancyWindowOut])
+def list_vacancy(post_id: int, db: Session = Depends(get_db)):
+    p = db.query(models.Post).get(post_id)
+    if not p: raise HTTPException(404, "Post not found")
+    return db.query(models.VacancyWindow).filter_by(post_id=post_id).all()
+
+@api.post("/posts/{post_id}/vacancy", response_model=schemas.VacancyWindowOut)
+def add_vacancy(post_id: int, data: schemas.VacancyWindowCreate, db: Session = Depends(get_db)):
+    p = db.query(models.Post).get(post_id)
+    if not p: raise HTTPException(404, "Post not found")
+    vw = models.VacancyWindow(post_id=post_id, **data.dict())
+    # basic guard: end >= start
+    if vw.end_date and vw.end_date < vw.start_date:
+        raise HTTPException(400, "end_date cannot be before start_date")
+    db.add(vw); db.commit(); db.refresh(vw)
+    return vw
+
+@api.delete("/posts/{post_id}/vacancy/{vw_id}")
+def delete_vacancy(post_id: int, vw_id: int, db: Session = Depends(get_db)):
+    vw = db.query(models.VacancyWindow).get(vw_id)
+    if not vw or vw.post_id != post_id:
+        raise HTTPException(404, "Vacancy window not found")
+    db.delete(vw); db.commit()
+    return {"status": "ok"}
+
+# QUICK FEASIBILITY PING (stub)
+@api.get("/feasibility")
+def feasibility(db: Session = Depends(get_db)):
+    """
+    Returns a coarse view: number of posts ACTIVE/ROSTERABLE vs. VACANT_UNROSTERABLE *today*.
+    The real engine will replace this with full coverage/EWTD checks and 'first failing date'.
+    """
+    today = date.today()
+    posts = db.query(models.Post).all()
+    def is_unrosterable(p: models.Post) -> bool:
+        if p.status == "VACANT_UNROSTERABLE": return True
+        # any window marking today as UNROSTERABLE?
+        for w in p.vacancy_windows:
+            if w.status == "VACANT_UNROSTERABLE" and w.start_date <= today and (w.end_date is None or w.end_date >= today):
+                return True
+        return False
+    unrosterable = sum(1 for p in posts if is_unrosterable(p))
+    rosterable = len(posts) - unrosterable
+    # naive locum signal (replace later)
+    locum_required = rosterable < 1  # if you require coverage=1, tweak once service lines exist
+    return {"date": str(today), "posts_total": len(posts), "rosterable": rosterable,
+            "unrosterable": unrosterable, "locum_required": locum_required}
 
 # start of /validate/rota
 # We can add OPD/supervision collisions once those tables are populated.
