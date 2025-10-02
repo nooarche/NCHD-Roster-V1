@@ -24,14 +24,21 @@ export default function AdminPostBuilder({ apiBase }: Props) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  const refresh = async () => {
-    try {
-      const r = await fetch(`${apiBase}/posts`)
-      setPosts(await r.json())
-    } catch (e: any) {
-      setErr(e?.message ?? String(e))
+const refresh = async () => {
+  try {
+    const r = await fetch(`${apiBase}/posts`)
+    if (!r.ok) {
+      // capture textual error so the UI can show it instead of crashing
+      const msg = await r.text()
+      throw new Error(`GET /posts → ${r.status} ${r.statusText}: ${msg.slice(0,200)}`)
     }
+    setPosts(await r.json())
+    setError(null)
+  } catch (e: any) {
+    console.error(e)
+    setError(e.message || "Failed to fetch")
   }
+}
 
   useEffect(() => { refresh() }, [])
 
