@@ -1,6 +1,6 @@
 // frontend/src/ui/App.tsx
 import React, { useEffect, useState } from "react"
-import AdminPostBuilder from "./AdminPostBuilder"
+import AdminPostBuilder from "./admin/AdminPostBuilder"
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000"
 
