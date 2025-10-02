@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routers import api
 from .db import engine, Base, SessionLocal
 from .seed import seed
+from app import models, schemas
+from app.db import Base, get_db
 import time
 from sqlalchemy.exc import OperationalError
 
