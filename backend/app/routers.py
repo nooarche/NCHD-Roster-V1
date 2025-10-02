@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from .db import get_db
 from . import models, schemas
+from app import models, schemas
+from app.db import Base, get_db
 from typing import List
 from datetime import datetime, timedelta, date
 from sqlalchemy import and_
