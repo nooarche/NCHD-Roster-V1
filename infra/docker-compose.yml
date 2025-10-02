@@ -1,5 +1,4 @@
 
-
 services:
   db:
     image: postgres:16-alpine
@@ -42,7 +41,7 @@ services:
     image: infra-frontend:latest
     container_name: infra-frontend-1
     # Dev: run Vite server inside this container for quick iteration
-    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    command: ["sh","-lc","npm ci --no-audit --no-fund && npm run dev -- --host 0.0.0.0"]
     working_dir: /app
     volumes:
       - ../frontend:/app
