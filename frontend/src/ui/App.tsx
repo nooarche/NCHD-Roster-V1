@@ -18,20 +18,29 @@ const API = (import.meta as any).env?.VITE_API_BASE || "/api"
 const th: React.CSSProperties = { textAlign:"left", borderBottom:"1px solid #ddd", padding:"8px 10px", fontWeight:600 }
 const td: React.CSSProperties = { borderBottom:"1px solid #f0f0f0", padding:"8px 10px" }
 
+// SINGLE canonical helper — paste once in App.tsx (usually near other hooks)
+
 function useUsers() {
-  const [users, setUsers] = useState<User[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const refresh = async () => {
+  const [users, setUsers] = React.useState<any[]>([])
+  const [loading, setLoading] = React.useState<boolean>(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  const refresh = React.useCallback(async () => {
     setLoading(true); setError(null)
     try {
       const r = await fetch(`${API}/users`)
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      setUsers(await r.json())
-    } catch (e:any) { setError(e.message || "Failed to load users") }
-    finally { setLoading(false) }
-  }
-  useEffect(() => { refresh() }, [])
+      const data = await r.json()
+      setUsers(data)
+    } catch (e: any) {
+      setError(e?.message || "Failed to load users")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => { refresh() }, [refresh])
+
   return { users, loading, error, refresh }
 }
 
@@ -213,13 +222,6 @@ export function App() {
   )
 }
 
-function useUsers() {
-  const [users, setUsers] = useState<any[]>([])
-  useEffect(() => {
-    fetch(`${API}/users`).then(r => r.json()).then(setUsers).catch(()=>{})
-  }, [])
-  return users
-}
 
 /** Admin: Users CRUD */
 function AdminUsers({users, refresh}:{users:User[], refresh:()=>void}) {
@@ -396,50 +398,6 @@ function RosterBuilder() {
         {msg && <span>{msg}</span>}
       </div>
       <small>Round-robin across NCHDs. Re-running will overwrite existing on-call slots for that month.</small>
-    </div>
-  )
-}
-
-export function App() {
-  const { users, loading, error, refresh } = useUsers()
-  const [tab, setTab] = useState<"Admin"|"Supervisor"|"NCHD"|"Staff">("Admin")
-
-  const supervisors = useMemo(()=>users.filter(u=>u.role==="supervisor"), [users])
-  const nchds = useMemo(()=>users.filter(u=>u.role==="nchd"), [users])
-
-  return (
-    <div style={{fontFamily:"system-ui,-apple-system,Segoe UI,Roboto", margin:"2rem", lineHeight:1.35}}>
-      <h1 style={{marginBottom:4}}>NCHD Rostering & Leave System</h1>
-      <p style={{marginTop:0, color:"#555"}}>Demo UI — growing features.</p>
-
-      <div style={{margin:"1rem 0"}}>
-        {(["Admin","Supervisor","NCHD","Staff"] as const).map(t =>
-          <TabBtn key={t} active={t===tab} onClick={()=>setTab(t)} label={t} />
-        )}
-      </div>
-
-      {loading && <div>Loading…</div>}
-      {error && <div style={{color:"crimson"}}>Error: {error}</div>}
-
-      {!loading && !error && (
-        <>
-          {tab==="Admin"      && <AdminPanel users={users} refresh={refresh}/>}
-          {tab==="Supervisor" && (<>
-            <h2>Supervisor view</h2>
-            <UsersTable users={supervisors}/>
-            <div style={{marginTop:12}}>Team calendar & approvals (coming soon).</div>
-          </>)}
-          {tab==="NCHD"       && (<>
-            <h2>NCHD view</h2>
-            <UsersTable users={nchds}/>
-            <div style={{marginTop:12}}>Personal calendar & Leave Helper (coming soon).</div>
-          </>)}
-          {tab==="Staff"      && (<>
-            <h2>Staff view — Monthly on-call</h2>
-            <StaffCalendar/>
-          </>)}
-        </>
-      )}
     </div>
   )
 }
