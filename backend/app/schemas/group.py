@@ -9,6 +9,28 @@ class ActivityBase(BaseModel):
     kind: str               # "weekly" | "one_off"
     pattern: Dict[str, Any] # see pattern spec
 
+class ActivityCreate(BaseModel):
+    name: str
+    kind: str
+    pattern: Dict[str, Any] = {}
+
+class ActivityOut(ActivityCreate):
+    id: int
+    group_id: int
+    class Config:
+        from_attributes = True
+
+class GroupCreate(BaseModel):
+    name: str
+    kind: str
+    rules: Dict[str, Any] = {}
+
+class GroupOut(GroupCreate):
+    id: int
+    activities: List[ActivityOut] = []
+    class Config:
+        from_attributes = True
+
 class ActivityCreate(ActivityBase):
     pass
 
