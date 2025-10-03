@@ -1,14 +1,10 @@
 # backend/app/models.py
-from sqlalchemy import (
-    Column, Integer, String, Float, Boolean, ForeignKey, DateTime
-)
+from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, DateTime, Date, JSON
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import JSON  # JSON (text) – fine on Postgres; JSONB is also okay
 
 Base = declarative_base()
 
-# --- Users ---------------------------------------------------------------------
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -19,7 +15,6 @@ class User(Base):
     site = Column(String)
     active = Column(Boolean, default=True)
 
-# --- Posts ---------------------------------------------------------------------
 class Post(Base):
     __tablename__ = "posts"
     id = Column(Integer, primary_key=True, index=True)
@@ -30,16 +25,12 @@ class Post(Base):
     fte = Column(Float, default=1.0)
     status = Column(String, default="ACTIVE_ROSTERABLE")  # or "VACANT_UNROSTERABLE"
 
-    # Flexible JSON stores for rules and working patterns
-    # NOTE: default=dict ensures new records get {} (not None)
     core_hours = Column(JSONB, default=dict)   # e.g. {"Mon":[["09:00","17:00"]], ...}
     eligibility = Column(JSONB, default=dict)  # e.g. {"call_policy":{...}}
     notes = Column(String)
 
-    # many-to-many with Group via PostGroup
     groups = relationship("Group", secondary="post_groups", back_populates="posts")
 
-# --- Groups & Activities -------------------------------------------------------
 class Group(Base):
     __tablename__ = "groups"
     id = Column(Integer, primary_key=True, index=True)
@@ -47,7 +38,6 @@ class Group(Base):
     kind = Column(String, nullable=False)   # e.g. on_call_pool | protected_teaching | clinic_team
     rules = Column(JSON, nullable=False, default=dict)
 
-    # back_populates attached below on PostGroup & Activity
     posts = relationship("Post", secondary="post_groups", back_populates="groups")
     activities = relationship("Activity", back_populates="group", cascade="all, delete-orphan")
 
@@ -55,22 +45,16 @@ class Activity(Base):
     __tablename__ = "activities"
     id = Column(Integer, primary_key=True, index=True)
     group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
-
     name = Column(String, nullable=False)
     kind = Column(String, nullable=False)   # weekly | one_off
-    # weekly: {"byweekday":["MON"],"start":"12:30","end":"13:30"}
-    # one_off: {"start":"2025-11-10T12:30:00","end":"2025-11-10T13:30:00"}
     pattern = Column(JSON, nullable=False, default=dict)
-
     group = relationship("Group", back_populates="activities")
 
-# --- Join table for Post <-> Group --------------------------------------------
 class PostGroup(Base):
     __tablename__ = "post_groups"
     post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True)
     group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True)
 
-# --- Rota slots ----------------------------------------------------------------
 class RotaSlot(Base):
     __tablename__ = "rota_slots"
     id = Column(Integer, primary_key=True)
