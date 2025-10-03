@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Literal, Optional
+from typing import Literal, Optional, Dict, Any
 
 Time = str
 TimeWindow = list[Time]
@@ -65,8 +65,20 @@ class PostBase(BaseModel):
     group_ids: list[int] = []
     notes: Optional[str] = None
 
-class PostCreate(PostBase): ...
-class PostUpdate(PostBase): ...
+class PostCreate(PostBase):
+    pass
 
-class PostRead(PostBase):
+class PostUpdate(BaseModel):
+    title: Optional[str] = None
+    site: Optional[str] = None
+    grade: Optional[str] = None
+    fte: Optional[float] = None
+    status: Optional[str] = None
+    core_hours: Optional[Dict[str, Any]] = None
+    eligibility: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+
+class PostOut(PostBase):
     id: int
+    class Config:
+        from_attributes = True
