@@ -1,23 +1,30 @@
+# backend/app/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import api
+import time
+from sqlalchemy.exc import OperationalError
+
 from .db import engine, Base, SessionLocal
 from .seed import seed
 from . import models  # ensure models are imported so metadata knows all tables
 
-import time
-from sqlalchemy.exc import OperationalError
-from .routers import groups, solve  # NEW
+# Routers
+from .routers import api
+from .routers import groups  # ANCHOR: GROUPS_ROUTER_IMPORT
+try:
+    # Optional: only include if you actually have backend/app/routers/solve.py
+    from .routers import solve
+    HAS_SOLVE = True
+except Exception:
+    HAS_SOLVE = False
 
-app.include_router(groups.router)   # NEW
-app.include_router(solve.router)    # NEW
 app = FastAPI(title="NCHD Rostering & Leave System API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost",          # <— add this
+        "http://localhost",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ],
@@ -26,16 +33,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register routers
 app.include_router(api)
-from .routers import groups  # ANCHOR: GROUPS_ROUTER_IMPORT
 app.include_router(groups.router)
+if HAS_SOLVE:
+    app.include_router(solve.router)
 
 @app.on_event("startup")
 def on_startup():
-    # retry for DB readiness (max ~30s)
-    for attempt in range(30):
+    # Retry for DB readiness (max ~30s)
+    for _ in range(30):
         try:
-            Base.metadata.create_all(bind=engine)  # demo; Alembic preferred
+            Base.metadata.create_all(bind=engine)  # demo; Alembic preferred in prod
             break
         except OperationalError:
             time.sleep(1)
