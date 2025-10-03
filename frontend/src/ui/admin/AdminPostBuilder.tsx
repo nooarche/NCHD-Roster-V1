@@ -1,4 +1,25 @@
 import React, { useEffect, useState } from "react"
+useEffect(() => {
+  (async () => {
+    try {
+      const [postsData, groupsData] = await Promise.all([
+        jsonFetch(`${apiBase}/posts`),
+        jsonFetch(`${apiBase}/groups`)
+      ])
+      setPosts(postsData)
+      setGroups(groupsData)
+    } catch (e:any) { setError(e.message || "Failed to load") }
+  })()
+}, [])
+type Group = { id: number; name: string; kind: string; rules?: any }
+
+async function jsonFetch(url: string, init?: RequestInit) {
+  const r = await fetch(url, { headers: { Accept: "application/json" }, ...init })
+  const t = await r.text()
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}: ${t.slice(0,200)}`)
+  if (!((r.headers.get("content-type")||"").includes("application/json"))) throw new Error(`Non-JSON: ${t.slice(0,80)}`)
+  return JSON.parse(t)
+}
 
 type CallPolicy = {
   participates_in_call: boolean
@@ -47,7 +68,9 @@ export default function AdminPostBuilder({ apiBase }: Props) {
   // edit state
   const [editingId, setEditingId] = useState<number | null>(null)
   const [edit, setEdit] = useState<Partial<Post>>({})
-
+const [groups, setGroups] = useState<Group[]>([])
+const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([])
+const [coreHoursText, setCoreHoursText] = useState<string>('{"Mon":[["09:00","17:00"]]}')
   const refresh = async () => {
     setLoading(true); setError(null)
     try {
