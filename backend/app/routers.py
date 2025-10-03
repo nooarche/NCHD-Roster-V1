@@ -13,7 +13,7 @@ api = APIRouter()
 
 @api.get("/users")
 def list_users(db: Session = Depends(get_db)) -> List[dict]:
-    # TEMP stub so the UI doesn't 404; replace with real query later.
+    # TEMP stub so the UI always gets JSON. Replace with real query later.
     return []
 
 #@api.get("/users", response_model=List[schemas.UserOut])
@@ -92,9 +92,25 @@ api = APIRouter()
 # ... existing health, users, actions stubs ...
 
 # POSTS
-@api.get("/posts", response_model=List[schemas.PostOut])
-def list_posts(db: Session = Depends(get_db)):
-    return db.query(models.Post).all()
+@api.get("/posts")
+def list_posts(db: Session = Depends(get_db)) -> List[dict]:
+    try:
+        rows = db.query(models.Post).all()
+        # minimal serialization
+        return [
+            {
+                "id": p.id,
+                "title": p.title,
+                "site": getattr(p, "site", None),
+                "grade": getattr(p, "grade", None),
+                "fte": getattr(p, "fte", 1.0),
+                "status": getattr(p, "status", "ACTIVE_ROSTERABLE"),
+            }
+            for p in rows
+        ]
+    except Exception as e:
+        # Return JSON error instead of HTML traceback so the frontend doesn't crash
+        return {"error": f"/posts failed: {type(e).__name__}: {e}"}
 
 @api.post("/posts", response_model=schemas.PostOut)
 def create_post(data: schemas.PostCreate, db: Session = Depends(get_db)):

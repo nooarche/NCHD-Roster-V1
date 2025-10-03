@@ -12,6 +12,38 @@ type Post = {
 
 type Props = { apiBase: string }
 
+async function jsonFetch(url: string, init?: RequestInit) {
+  const r = await fetch(url, {
+    headers: { Accept: "application/json", ...(init?.headers || {}) },
+    ...init,
+  })
+  const ct = r.headers.get("content-type") || ""
+  if (!r.ok) {
+    const text = await r.text()
+    throw new Error(`${r.status} ${r.statusText} from ${url}\n${text.slice(0,200)}`)
+  }
+  if (!ct.includes("application/json")) {
+    const text = await r.text()
+    throw new Error(`Non-JSON from ${url} → starts with: ${text.slice(0,50)}`)
+  }
+  return r.json()
+}
+
+// replace your refresh() with:
+const refresh = async () => {
+  try {
+    const [posts, users] = await Promise.all([
+      jsonFetch(`${apiBase}/posts`),
+      jsonFetch(`${apiBase}/users`)
+    ])
+    setPosts(posts)
+    setError(null)
+  } catch (e: any) {
+    console.error(e)
+    setError(e.message ?? String(e))
+  }
+}
+
 export default function AdminPostBuilder({ apiBase }: Props) {
   const [posts, setPosts] = useState<Post[]>([])
   const [form, setForm] = useState<Partial<Post>>({
