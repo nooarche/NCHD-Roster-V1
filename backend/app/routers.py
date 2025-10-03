@@ -1,26 +1,25 @@
+# backend/app/routers.py
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List
-
 from .db import get_db
 from . import models
+import json
 
 api = APIRouter()
 
-# ---------- helpers ----------
 def _as_json(obj: Any) -> Dict[str, Any]:
-    """Return a dict for JSON-like fields; tolerate None/str/other."""
     if obj is None:
         return {}
     if isinstance(obj, dict):
         return obj
-    # In case old rows still store text
-    try:
-        import json
-        return json.loads(obj) if isinstance(obj, str) else {}
-    except Exception:
-        return {}
+    if isinstance(obj, str):
+        try:
+            return json.loads(obj)
+        except Exception:
+            return {}
+    return {}
 
 def _user_to_dict(u: models.User) -> Dict[str, Any]:
     return {
@@ -48,18 +47,16 @@ def _post_to_dict(p: models.Post) -> Dict[str, Any]:
         "call_policy": call_policy,
     }
 
-# ---------- health ----------
 @api.get("/health")
 def health() -> Dict[str, Any]:
     return {"ok": True}
 
-# ---------- users ----------
 @api.get("/users")
 def list_users(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     users = db.query(models.User).order_by(models.User.id.asc()).all()
     return [_user_to_dict(u) for u in users]
 
-# ---------- groups (CRUD) ----------
+# ----- Groups CRUD -----
 @api.get("/groups")
 def list_groups(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     gs = db.query(models.Group).order_by(models.Group.id.asc()).all()
@@ -90,7 +87,7 @@ def delete_group(group_id: int, db: Session = Depends(get_db)) -> Dict[str, Any]
     db.delete(g); db.commit()
     return {"status": "ok", "deleted": group_id}
 
-# ---------- posts (CRUD) ----------
+# ----- Posts CRUD -----
 @api.get("/posts")
 def list_posts(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     posts = db.query(models.Post).order_by(models.Post.id.asc()).all()
