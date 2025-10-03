@@ -1,8 +1,7 @@
-# backend/app/routers/groups.py
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 from typing import List
 from ..db import get_db
-from sqlalchemy.orm import Session
 from .. import models
 from ..schemas.group import GroupCreate, GroupOut, ActivityCreate, ActivityOut
 
@@ -11,18 +10,11 @@ router = APIRouter(prefix="/groups", tags=["groups"])
 @router.get("", response_model=List[GroupOut])
 def list_groups(db: Session = Depends(get_db)):
     groups = db.query(models.Group).all()
-    out = []
+    out: List[GroupOut] = []
     for g in groups:
         out.append(GroupOut(
-            id=g.id,
-            name=g.name,
-            kind=g.kind,
-            rules=g.rules or {},
-            activities=[
-                ActivityOut(
-                    id=a.id, group_id=g.id, name=a.name, kind=a.kind, pattern=a.pattern or {}
-                ) for a in (g.activities or [])
-            ]
+            id=g.id, name=g.name, kind=g.kind, rules=g.rules or {},
+            activities=[ActivityOut(id=a.id, group_id=g.id, name=a.name, kind=a.kind, pattern=a.pattern or {}) for a in (g.activities or [])]
         ))
     return out
 
@@ -30,7 +22,6 @@ def list_groups(db: Session = Depends(get_db)):
 def create_group(payload: GroupCreate, db: Session = Depends(get_db)):
     g = models.Group(name=payload.name, kind=payload.kind, rules=payload.rules or {})
     db.add(g); db.commit(); db.refresh(g)
-    # optional: create activities in one go later; for now group bare
     return GroupOut(id=g.id, name=g.name, kind=g.kind, rules=g.rules, activities=[])
 
 @router.put("/{group_id}", response_model=GroupOut)
@@ -53,7 +44,6 @@ def delete_group(group_id: int, db: Session = Depends(get_db)):
     db.delete(g); db.commit()
     return {"ok": True}
 
-# Activities (nested under group)
 @router.post("/{group_id}/activities", response_model=ActivityOut)
 def add_activity(group_id: int, payload: ActivityCreate, db: Session = Depends(get_db)):
     g = db.query(models.Group).get(group_id)
