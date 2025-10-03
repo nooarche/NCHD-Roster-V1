@@ -106,7 +106,37 @@ def _count_nights_in_month(db: Session, user_id: int, year: int, month: int) -> 
 @api.get("/health")
 def health() -> Dict[str, Any]:
     return {"ok": True}
+#---------------------------GROUPS---------------------------
+def _group_to_dict(g: models.Group) -> Dict[str, Any]:
+    return {"id": g.id, "name": g.name, "kind": g.kind, "rules": g.rules or {}}
 
+@api.get("/groups")
+def list_groups(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
+    gs = db.query(models.Group).order_by(models.Group.id.asc()).all()
+    return [_group_to_dict(g) for g in gs]
+
+@api.post("/groups")
+def create_group(data: Dict[str, Any] = Body(...), db: Session = Depends(get_db)) -> Dict[str, Any]:
+    g = models.Group(name=data["name"], kind=data["kind"], rules=data.get("rules") or {})
+    db.add(g); db.commit(); db.refresh(g)
+    return _group_to_dict(g)
+
+@api.put("/groups/{group_id}")
+def update_group(group_id: int, data: Dict[str, Any] = Body(...), db: Session = Depends(get_db)) -> Dict[str, Any]:
+    g = db.query(models.Group).get(group_id)
+    if not g: raise HTTPException(404, "Group not found")
+    if "name" in data: g.name = data["name"]
+    if "kind" in data: g.kind = data["kind"]
+    if "rules" in data: g.rules = data["rules"] or {}
+    db.commit(); db.refresh(g)
+    return _group_to_dict(g)
+
+@api.delete("/groups/{group_id}")
+def delete_group(group_id: int, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    g = db.query(models.Group).get(group_id)
+    if not g: raise HTTPException(404, "Group not found")
+    db.delete(g); db.commit()
+    return {"status":"ok", "deleted": group_id}
 # ------------------------- USERS --------------------------
 
 @api.get("/users")
@@ -129,30 +159,55 @@ def create_post(data: Dict[str, Any] = Body(...), db: Session = Depends(get_db))
         grade=data.get("grade"),
         fte=float(data.get("fte") or 1.0),
         status=data.get("status", "ACTIVE_ROSTERABLE"),
+        core_hours=data.get("core_hours") or {},
         eligibility=data.get("eligibility") or {},
-        notes=data.get("notes"),
+        notes=data.get("notes")
     )
-    # optional: initial call policy in payload
+    # optional call policy pack under eligibility
     if "call_policy" in data:
-        _set_call_policy(p, data["call_policy"])
+        elig = p.eligibility or {}
+        elig["call_policy"] = data["call_policy"]
+        p.eligibility = elig
+
+    # assign groups
+    grp_ids = data.get("group_ids") or []
+    if grp_ids:
+        groups = db.query(models.Group).filter(models.Group.id.in_(grp_ids)).all()
+        p.groups = groups
+
     db.add(p); db.commit(); db.refresh(p)
-    return _post_to_dict(p)
+
+    return {
+        "id": p.id, "title": p.title, "site": p.site, "grade": p.grade, "fte": p.fte,
+        "status": p.status, "core_hours": p.core_hours or {}, "eligibility": p.eligibility or {},
+        "notes": p.notes, "group_ids": [g.id for g in p.groups]
+    }
 
 @api.put("/posts/{post_id}")
 def update_post(post_id: int, data: Dict[str, Any] = Body(...), db: Session = Depends(get_db)) -> Dict[str, Any]:
     p = db.query(models.Post).get(post_id)
-    if not p:
-        raise HTTPException(404, "Post not found")
+    if not p: raise HTTPException(404, "Post not found")
+
     for k in ["title","site","grade","fte","status","notes"]:
-        if k in data:
-            setattr(p, k, data[k])
+        if k in data: setattr(p, k, data[k])
+    if "core_hours" in data: p.core_hours = data["core_hours"] or {}
+    if "eligibility" in data: p.eligibility = data["eligibility"] or {}
     if "call_policy" in data:
-        _set_call_policy(p, data["call_policy"])
-    # keep other JSON sub-objects if passed fully
-    if "eligibility" in data and "call_policy" not in data:
-        p.eligibility = data["eligibility"]
+        elig = p.eligibility or {}
+        elig["call_policy"] = data["call_policy"] or {}
+        p.eligibility = elig
+
+    if "group_ids" in data:
+        group_ids = data["group_ids"] or []
+        groups = db.query(models.Group).filter(models.Group.id.in_(group_ids)).all() if group_ids else []
+        p.groups = groups
+
     db.commit(); db.refresh(p)
-    return _post_to_dict(p)
+    return {
+        "id": p.id, "title": p.title, "site": p.site, "grade": p.grade, "fte": p.fte,
+        "status": p.status, "core_hours": p.core_hours or {}, "eligibility": p.eligibility or {},
+        "notes": p.notes, "group_ids": [g.id for g in p.groups]
+    }
 
 @api.delete("/posts/{post_id}")
 def delete_post(post_id: int, db: Session = Depends(get_db)) -> Dict[str, Any]:
