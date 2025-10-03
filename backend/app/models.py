@@ -33,14 +33,23 @@ class Post(Base):
     # many-to-many to Group
     groups = relationship("Group", secondary="post_groups", back_populates="posts")
 
+
 class Group(Base):
     __tablename__ = "groups"
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    kind = Column(String, nullable=False)  # "on_call_pool" | "teaching_block" | "team" | ...
-    rules = Column(JSONB, default=dict)    # rule payload for that group
-    posts = relationship("Post", secondary="post_groups", back_populates="groups")
+    kind = Column(String, nullable=False)   # e.g. on_call_pool | protected_teaching | clinic_team
+    rules = Column(JSON, nullable=False, default=dict)
 
+class Activity(Base):
+    __tablename__ = "activities"
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String, nullable=False)
+    kind = Column(String, nullable=False)   # weekly | one_off
+    pattern = Column(JSON, nullable=False, default=dict)
+    group = relationship("Group", backref="activities")
+    
 class PostGroup(Base):
     __tablename__ = "post_groups"
     post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True)
