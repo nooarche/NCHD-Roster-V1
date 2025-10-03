@@ -1,8 +1,36 @@
 from pydantic import BaseModel
-from typing import Literal, Optional
+from typing import Optional, List, Dict, Any
 
 Time = str
 TimeWindow = list[Time]
+
+class ActivityBase(BaseModel):
+    name: str
+    kind: str               # "weekly" | "one_off"
+    pattern: Dict[str, Any] # see pattern spec
+
+class ActivityCreate(ActivityBase):
+    pass
+
+class ActivityOut(ActivityBase):
+    id: int
+    group_id: int
+    class Config:
+        from_attributes = True
+
+class GroupBase(BaseModel):
+    name: str
+    kind: str               # e.g. "on_call_pool" | "protected_teaching" | "clinic_team"
+    rules: Dict[str, Any] = {}
+
+class GroupCreate(GroupBase):
+    pass
+
+class GroupOut(GroupBase):
+    id: int
+    activities: List[ActivityOut] = []
+    class Config:
+        from_attributes = True
 
 class WeeklyPattern(BaseModel):
     kind: Literal["weekly"] = "weekly"
