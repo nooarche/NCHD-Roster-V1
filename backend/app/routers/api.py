@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import Any, Dict, List
+from typing import List
 
 from ..db import get_db
 from .. import models
+from ..schemas import PostCreate, PostUpdate, PostOut
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
@@ -58,4 +59,44 @@ def delete_post(post_id: int, db: Session = Depends(get_db)):
     if not p:
         raise HTTPException(status_code=404, detail="Post not found")
     db.delete(p); db.commit()
+    return {"ok": True}
+
+router = APIRouter(tags=["core"])
+
+@router.get("/health")
+def health():
+    return {"ok": True}
+# ---- Posts --------------------------------------------------------------------
+
+@router.get("/posts", response_model=List[PostOut])
+def list_posts(db: Session = Depends(get_db)):
+    posts = db.query(models.Post).order_by(models.Post.id.asc()).all()
+    return posts
+
+@router.post("/posts", response_model=PostOut)
+def create_post(payload: PostCreate, db: Session = Depends(get_db)):
+    post = models.Post(**payload.model_dump())
+    db.add(post)
+    db.commit()
+    db.refresh(post)
+    return post
+
+@router.put("/posts/{post_id}", response_model=PostOut)
+def update_post(post_id: int, payload: PostUpdate, db: Session = Depends(get_db)):
+    post = db.query(models.Post).get(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(post, k, v)
+    db.commit()
+    db.refresh(post)
+    return post
+
+@router.delete("/posts/{post_id}")
+def delete_post(post_id: int, db: Session = Depends(get_db)):
+    post = db.query(models.Post).get(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    db.delete(post)
+    db.commit()
     return {"ok": True}
