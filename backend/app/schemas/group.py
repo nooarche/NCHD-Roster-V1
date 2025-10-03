@@ -77,12 +77,18 @@ class GroupBase(BaseModel):
     rules: dict = {}
     activities: list[Activity] = []
 
-class GroupCreate(GroupBase): ...
+class GroupCreate(GroupBase): 
+    pass
+    
 class GroupUpdate(BaseModel):
     name: Optional[str] = None
-    kind: Optional[Literal["on_call_pool","teaching_block","team","site_rule","other"]] = None
-    rules: Optional[dict] = None
-    activities: Optional[list[Activity]] = None
+    kind: Optional[str] = None
+    rules: Optional[Dict[str, Any]] = None
+
+class GroupOut(GroupBase):
+    id: int
+    class Config:
+        from_attributes = True
 
 class GroupRead(GroupBase):
     id: int
