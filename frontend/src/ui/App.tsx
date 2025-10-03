@@ -1,8 +1,10 @@
 // frontend/src/ui/App.tsx
 import React, { useEffect, useState } from "react"
 import AdminPostBuilder from "./admin/AdminPostBuilder"
-import RosterEditor from "./RosterEditor"
 
+import AdminGroups from "./admin/AdminGroups"
+
+import RosterEditor from "./RosterEditor"
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || "/api";
 
@@ -38,11 +40,15 @@ export function App() {
       <nav style={{display:"flex",gap:8,marginBottom:12}}>
         <button onClick={()=>setTab("Admin")}>Admin</button>
         <button onClick={()=>setTab("Roster")}>Roster</button>
+        <button onClick={()=>setTab("AdminPosts")}>Admin · Posts</button>
+        <button onClick={()=>setTab("AdminGroups")}>Admin · Groups</button>
+        <button onClick={()=>setTab("Roster")}>Roster</button>
         {/* …other tabs */}
       </nav>
 
-      {tab==="Admin"  && <AdminPostBuilder apiBase={API_BASE}/>}
-      {tab==="Roster" && <RosterEditor apiBase={API_BASE}/>}
+           {tab === "AdminPosts"  && <AdminPostBuilder apiBase={API_BASE} />}
+      {tab === "AdminGroups" && <AdminGroups      apiBase={API_BASE} />}
+      {/* {tab === "Roster"   && <RosterEditor apiBase={API_BASE} />} */}
     </>
   )
 }
