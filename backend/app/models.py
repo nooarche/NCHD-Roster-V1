@@ -1,20 +1,16 @@
 # backend/app/models.py
-
 from sqlalchemy import (
-    Column, Integer, String, Float, Boolean,
-    ForeignKey, DateTime
+    Column, Integer, String, Float, Boolean, ForeignKey, DateTime
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON  # JSON (text) – fine on Postgres; JSONB is also okay
 
+Base = declarative_base()
 
-
-# -------------------------
-# Users
-# -------------------------
+# --- Users ---------------------------------------------------------------------
 class User(Base):
     __tablename__ = "users"
-
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     email = Column(String)
@@ -23,13 +19,9 @@ class User(Base):
     site = Column(String)
     active = Column(Boolean, default=True)
 
-
-# -------------------------
-# Posts
-# -------------------------
+# --- Posts ---------------------------------------------------------------------
 class Post(Base):
     __tablename__ = "posts"
-
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
 
@@ -39,85 +31,52 @@ class Post(Base):
     status = Column(String, default="ACTIVE_ROSTERABLE")  # or "VACANT_UNROSTERABLE"
 
     # Flexible JSON stores for rules and working patterns
-    # e.g. core_hours: {"Mon":[["09:00","17:00"]], "Fri":[["09:00","16:00"]]}
-    core_hours = Column(JSONB, default=dict, nullable=True)
-
-    # e.g. eligibility: {"call_policy": {...}}
-    eligibility = Column(JSONB, default=dict, nullable=True)
-
+    # NOTE: default=dict ensures new records get {} (not None)
+    core_hours = Column(JSONB, default=dict)   # e.g. {"Mon":[["09:00","17:00"]], ...}
+    eligibility = Column(JSONB, default=dict)  # e.g. {"call_policy":{...}}
     notes = Column(String)
 
-    # many-to-many to Group via association table "post_groups"
+    # many-to-many with Group via PostGroup
     groups = relationship("Group", secondary="post_groups", back_populates="posts")
 
-
-# -------------------------
-# Groups
-# -------------------------
+# --- Groups & Activities -------------------------------------------------------
 class Group(Base):
     __tablename__ = "groups"
-
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     kind = Column(String, nullable=False)   # e.g. on_call_pool | protected_teaching | clinic_team
+    rules = Column(JSON, nullable=False, default=dict)
 
-    # Arbitrary rules payload for the group
-    # (kept as JSONB for Postgres efficiency/consistency)
-    rules = Column(JSONB, default=dict, nullable=True)
-
-    # back-reference of M2M from Post
+    # back_populates attached below on PostGroup & Activity
     posts = relationship("Post", secondary="post_groups", back_populates="groups")
-
-    # one-to-many Activities
     activities = relationship("Activity", back_populates="group", cascade="all, delete-orphan")
 
-
-# -------------------------
-# Activities (belong to a Group)
-# -------------------------
 class Activity(Base):
     __tablename__ = "activities"
-
     id = Column(Integer, primary_key=True, index=True)
     group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
 
     name = Column(String, nullable=False)
-    kind = Column(String, nullable=False)  # "weekly" | "one_off"
-
-    # For weekly:
-    #   {"byweekday":["MON"], "start":"12:30", "end":"13:30"}
-    # For one_off:
-    #   {"start":"2025-11-10T12:30:00", "end":"2025-11-10T13:30:00"}
-    pattern = Column(JSONB, default=dict, nullable=False)
+    kind = Column(String, nullable=False)   # weekly | one_off
+    # weekly: {"byweekday":["MON"],"start":"12:30","end":"13:30"}
+    # one_off: {"start":"2025-11-10T12:30:00","end":"2025-11-10T13:30:00"}
+    pattern = Column(JSON, nullable=False, default=dict)
 
     group = relationship("Group", back_populates="activities")
 
-
-# -------------------------
-# Post <-> Group (association)
-# -------------------------
+# --- Join table for Post <-> Group --------------------------------------------
 class PostGroup(Base):
     __tablename__ = "post_groups"
-
     post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True)
     group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True)
 
-
-# -------------------------
-# Rota slots
-# -------------------------
+# --- Rota slots ----------------------------------------------------------------
 class RotaSlot(Base):
     __tablename__ = "rota_slots"
-
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     post_id = Column(Integer, ForeignKey("posts.id"))
-
     start = Column(DateTime, nullable=False)
     end = Column(DateTime, nullable=False)
-
-    # e.g. "night_call" / "day" / "evening" / etc.
-    type = Column(String, default="night_call")
-
-    # free-form labels for extra tagging
-    labels = Column(JSONB, default=dict, nullable=True)
+    type = Column(String, default="night_call")  # night_call / day / evening / etc.
+    labels = Column(JSONB, default=dict)
