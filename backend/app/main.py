@@ -27,6 +27,8 @@ app.add_middleware(
 )
 
 app.include_router(api)
+from .routers import groups  # ANCHOR: GROUPS_ROUTER_IMPORT
+app.include_router(groups.router)
 
 @app.on_event("startup")
 def on_startup():
