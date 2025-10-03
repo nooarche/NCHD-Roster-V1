@@ -8,7 +8,10 @@ from . import models  # ensure models are imported so metadata knows all tables
 
 import time
 from sqlalchemy.exc import OperationalError
+from .routers import groups, solve  # NEW
 
+app.include_router(groups.router)   # NEW
+app.include_router(solve.router)    # NEW
 app = FastAPI(title="NCHD Rostering & Leave System API", version="0.1.0")
 
 app.add_middleware(

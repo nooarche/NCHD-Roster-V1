@@ -55,3 +55,33 @@ class RotaSlot(Base):
     end = Column(DateTime, nullable=False)
     type = Column(String, default="night_call")  # night_call / day / evening / etc.
     labels = Column(JSONB, default=dict)
+
+# ===[ANCHOR: GROUPS_ACTIVITIES_MODELS]========================================
+from sqlalchemy import JSON, ForeignKey
+from sqlalchemy.orm import relationship
+
+class Group(Base):
+    __tablename__ = "groups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    kind = Column(String, nullable=False)  # e.g. on_call_pool, protected_teaching, clinic_team
+    rules = Column(JSON, nullable=False, default=dict)
+
+    # Optional link: which posts belong to this group (M2M would be better later)
+    # For now we keep groups independent; you’ll associate via rules or future table.
+
+class Activity(Base):
+    __tablename__ = "activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
+
+    name = Column(String, nullable=False)
+    kind = Column(String, nullable=False)  # weekly | one_off
+    # weekly pattern like {"byweekday":["MON"],"start":"12:30","end":"13:30"}
+    # one_off like {"start":"2025-11-10T12:30:00","end":"2025-11-10T13:30:00"}
+    pattern = Column(JSON, nullable=False, default=dict)
+
+    group = relationship("Group", backref="activities")
+# =============================================================================
