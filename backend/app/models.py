@@ -7,8 +7,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
-# IMPORTANT: use the single Base defined in db.py so all models share one metadata
-from .db import Base
 
 
 # -------------------------
