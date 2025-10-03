@@ -1,16 +1,27 @@
-# backend/app/routers.py
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, Body, Query
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta, date
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
 from .db import get_db
 from . import models
 
 api = APIRouter()
 
-# ----------------- helpers -----------------
+# ---------- helpers ----------
+def _as_json(obj: Any) -> Dict[str, Any]:
+    """Return a dict for JSON-like fields; tolerate None/str/other."""
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        return obj
+    # In case old rows still store text
+    try:
+        import json
+        return json.loads(obj) if isinstance(obj, str) else {}
+    except Exception:
+        return {}
+
 def _user_to_dict(u: models.User) -> Dict[str, Any]:
     return {
         "id": u.id, "name": u.name, "email": u.email,
@@ -18,32 +29,37 @@ def _user_to_dict(u: models.User) -> Dict[str, Any]:
     }
 
 def _group_to_dict(g: models.Group) -> Dict[str, Any]:
-    return {"id": g.id, "name": g.name, "kind": g.kind, "rules": g.rules or {}}
+    return {"id": g.id, "name": g.name, "kind": g.kind, "rules": _as_json(g.rules)}
 
 def _post_to_dict(p: models.Post) -> Dict[str, Any]:
-    elig = p.eligibility or {}
+    core = _as_json(getattr(p, "core_hours", {}))
+    elig = _as_json(getattr(p, "eligibility", {}))
+    call_policy = _as_json(elig.get("call_policy")) or {
+        "participates_in_call": True,
+        "max_nights_per_month": 7,
+        "min_rest_hours": 11,
+        "role": "NCHD",
+    }
     return {
         "id": p.id, "title": p.title, "site": p.site, "grade": p.grade,
         "fte": float(p.fte or 1.0), "status": p.status,
-        "core_hours": p.core_hours or {}, "eligibility": elig, "notes": p.notes,
+        "core_hours": core, "eligibility": elig, "notes": p.notes,
         "group_ids": [g.id for g in p.groups],
-        "call_policy": (elig.get("call_policy") or {
-            "participates_in_call": True, "max_nights_per_month": 7, "min_rest_hours": 11, "role": "NCHD"
-        })
+        "call_policy": call_policy,
     }
 
-# ----------------- health -----------------
+# ---------- health ----------
 @api.get("/health")
 def health() -> Dict[str, Any]:
     return {"ok": True}
 
-# ----------------- users ------------------
+# ---------- users ----------
 @api.get("/users")
 def list_users(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     users = db.query(models.User).order_by(models.User.id.asc()).all()
     return [_user_to_dict(u) for u in users]
 
-# ----------------- groups -----------------
+# ---------- groups (CRUD) ----------
 @api.get("/groups")
 def list_groups(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     gs = db.query(models.Group).order_by(models.Group.id.asc()).all()
@@ -51,6 +67,8 @@ def list_groups(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
 
 @api.post("/groups")
 def create_group(data: Dict[str, Any] = Body(...), db: Session = Depends(get_db)) -> Dict[str, Any]:
+    if "name" not in data or "kind" not in data:
+        raise HTTPException(400, "name and kind are required")
     g = models.Group(name=data["name"], kind=data["kind"], rules=data.get("rules") or {})
     db.add(g); db.commit(); db.refresh(g)
     return _group_to_dict(g)
@@ -72,7 +90,7 @@ def delete_group(group_id: int, db: Session = Depends(get_db)) -> Dict[str, Any]
     db.delete(g); db.commit()
     return {"status": "ok", "deleted": group_id}
 
-# ----------------- posts ------------------
+# ---------- posts (CRUD) ----------
 @api.get("/posts")
 def list_posts(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     posts = db.query(models.Post).order_by(models.Post.id.asc()).all()
@@ -88,10 +106,10 @@ def create_post(data: Dict[str, Any] = Body(...), db: Session = Depends(get_db))
         status=data.get("status", "ACTIVE_ROSTERABLE"),
         core_hours=data.get("core_hours") or {},
         eligibility=data.get("eligibility") or {},
-        notes=data.get("notes")
+        notes=data.get("notes"),
     )
     if "call_policy" in data:
-        elig = p.eligibility or {}
+        elig = _as_json(p.eligibility)
         elig["call_policy"] = data["call_policy"] or {}
         p.eligibility = elig
 
@@ -113,7 +131,7 @@ def update_post(post_id: int, data: Dict[str, Any] = Body(...), db: Session = De
     if "core_hours" in data: p.core_hours = data["core_hours"] or {}
     if "eligibility" in data: p.eligibility = data["eligibility"] or {}
     if "call_policy" in data:
-        elig = p.eligibility or {}
+        elig = _as_json(p.eligibility)
         elig["call_policy"] = data["call_policy"] or {}
         p.eligibility = elig
 
