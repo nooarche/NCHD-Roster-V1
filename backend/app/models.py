@@ -1,8 +1,10 @@
 import sqlalchemy as sa
-from sqlalchemy.orm import relationship
+
 from .db import Base
 
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, JSON, Text, Date, Float
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 
 class Post(Base):
     __tablename__ = "posts"
@@ -13,17 +15,33 @@ class Post(Base):
     fte = Column(Float, default=1.0)       # Full-Time Equivalent (0.1–1.0)
     status = Column(String(32), default="ACTIVE_ROSTERABLE")  # ACTIVE_ROSTERABLE | VACANT_ROSTERABLE | VACANT_UNROSTERABLE
 
+    core_hours = Column(JSONB, default=dict)     # e.g. {"Mon":[["09:00","17:00"]], "Tue":[...]}
+
+    eligibility = Column(JSONB, default=dict)    # e.g. {"call_policy":{...}, "teaching":{...}}
+    notes = Column(String)
     # OPD and supervision/teaching & core hours templates as JSON for now
     opd = Column(JSON, nullable=True)          # {"days": ["Mon","Thu"], "guard": true, "sessions": {"Mon":[["09:30","12:30"]]}}
+    
     teaching = Column(JSON, nullable=True)     # {"protected":[{"dow":"Wed","start":"14:00","end":"16:30","ph_rule":"NA_NO_COMP"}]}
     supervision = Column(JSON, nullable=True)  # {"academic":{"mins":60,"pref":{"dow":"Thu","time":"15:00"}},
                                                #  "clinical":{"mins":60,"on_opd_days":True}}
-    core_hours = Column(JSON, nullable=True)   # {"Mon-Thu":{"start":"09:00","end":"17:00","break":["13:00","13:30"]},
-                                               #  "Fri":{"start":"09:00","end":"16:00","break":["13:00","13:30"]}}
-    eligibility = Column(JSON, nullable=True)  # {"day_call":True,"night_call":True,"weekend":True,"ph":True,"notes":""}
     notes = Column(Text)
 
     vacancy_windows = relationship("VacancyWindow", back_populates="post", cascade="all, delete-orphan")
+    groups = relationship("Group", secondary="post_groups", back_populates="posts")
+
+class Group(Base):
+    __tablename__ = "groups"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    kind = Column(String, nullable=False)   # "on_call_pool" | "teaching_block" | "team" | ...
+    rules = Column(JSONB, default=dict)     # e.g. teaching time windows, clinic rules, etc.
+    posts = relationship("Post", secondary="post_groups", back_populates="groups")
+
+class PostGroup(Base):
+    __tablename__ = "post_groups"
+    post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True)
 
 class VacancyWindow(Base):
     __tablename__ = "vacancy_windows"
